@@ -1,0 +1,51 @@
+# Configuracao da Etapa 0 - auditoria de metadados do corpus.
+# Todos os parametros da auditoria vivem aqui para manter o script determinstico
+# e a fonte de dados rastreavel.
+
+dataset:
+  id: nilc-nlp/CORAA-MUPE-ASR
+  # Revisao (commit SHA ou tag) fixada para reprodutibilidade.
+  # Deixe `null` para usar a revisao default do repositorio; a revisao
+  # efetivamente resolvida (SHA) e sempre registrada no relatorio de saida.
+  # PREENCHA com o SHA apos a primeira execucao para travar a fonte.
+  revision: null
+  splits:
+    - train
+    - validation
+    - test
+
+# Coluna(s) de audio a excluir da leitura (pesam GBs; nunca sao baixadas).
+# A auditoria le apenas metadados via projecao de colunas do parquet.
+audio_columns:
+  - audio
+
+# Mapa birth_state -> regiao.
+# IMPORTANTE: a REGIAO deriva EXCLUSIVAMENTE de `birth_state`, nunca do prefixo
+# de `speaker_code`. Estados nao listados aqui sao reportados como "fora de
+# escopo" no relatorio (nunca dropados em silencio).
+#
+# NOTA: os nomes abaixo sao PROVISORIOS e devem ser conferidos contra os valores
+# reais de `birth_state` apos a inspecao de schema (Passo 1 da auditoria).
+region_map:
+  # Nordeste
+  Maranhao: NE
+  Piaui: NE
+  Ceara: NE
+  Rio Grande do Norte: NE
+  Paraiba: NE
+  Pernambuco: NE
+  Alagoas: NE
+  Sergipe: NE
+  Bahia: NE
+  # Sudeste
+  Minas Gerais: SE
+  Espirito Santo: SE
+  Rio de Janeiro: SE
+  Sao Paulo: SE
+
+# Bordas de bucket etario - PROVISORIO, nao travar aqui.
+# A auditoria tambem emite a distribuicao etaria BRUTA por regiao
+# (age_distribution_by_region.csv) para decidir os buckets depois de ver o
+# confundidor (Nordeste mais jovem). Bordas semiabertas [inicio, fim).
+age_buckets:
+  edges: [18, 25, 35, 45, 60, 120]

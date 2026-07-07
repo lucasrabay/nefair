@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# nefair - Etapa 0: artefatos da auditoria
+# Os agregados pequenos (outputs/*.csv) e o relatório (outputs/corpus_audit_report.md)
+# SÃO versionados. Dumps grandes por segmento e artefatos transitórios NÃO são.
+/outputs/dumps/
+/outputs/*.parquet
+/outputs/schema_inspection.txt

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nefair"
+version = "0.1.0"
+description = "Auditoria de fairness de modelos de fala/linguagem em portugues brasileiro (Nordeste vs. Sudeste)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Lucas Rabay" }]
+dependencies = [
+    "datasets>=3.0",
+    "huggingface_hub>=0.25",
+    "pandas>=2.0",
+    "pyarrow>=17.0",
+    "pyyaml>=6.0",
+]
+
+# Compatibilidade com `pip install -e .` (runtime) e `pip install -e ".[dev]"` (dev).
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8.0",
+]
+
+# Grupo de dev nativo do uv (instalado por padrao em `uv sync`).
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "pytest>=8.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nefair"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "scripts", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

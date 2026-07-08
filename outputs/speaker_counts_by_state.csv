@@ -1,0 +1,19 @@
+birth_state,region,n_speakers,n_segments,hours
+,fora_de_escopo,17,14316,17.6007
+Alagoas,NE,3,3272,3.3824
+Bahia,NE,14,14736,16.1419
+Ceará,NE,4,4073,3.4818
+Espírito Santo,SE,1,1388,1.7038
+Goiás,fora_de_escopo,2,1901,2.6131
+Mato Grosso Do Sul,fora_de_escopo,1,495,0.6639
+Minas Gerais,SE,14,17772,21.3297
+Paraná,fora_de_escopo,2,1702,2.7842
+Paraíba,NE,4,4276,3.69
+Pará,fora_de_escopo,19,18451,19.4637
+Pernambuco,NE,12,13821,15.8838
+Piauí,NE,1,590,0.5712
+Rio De Janeiro,SE,11,12002,12.9434
+Rio Grande Do Sul,fora_de_escopo,5,5180,5.9487
+Rondônia,fora_de_escopo,11,8919,8.0844
+Sergipe,NE,1,195,0.1822
+São Paulo,SE,167,166854,206.225

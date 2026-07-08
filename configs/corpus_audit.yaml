@@ -24,28 +24,34 @@ audio_columns:
 # de `speaker_code`. Estados nao listados aqui sao reportados como "fora de
 # escopo" no relatorio (nunca dropados em silencio).
 #
-# NOTA: os nomes abaixo sao PROVISORIOS e devem ser conferidos contra os valores
-# reais de `birth_state` apos a inspecao de schema (Passo 1 da auditoria).
+# As strings abaixo batem EXATAMENTE com os valores reais de `birth_state`
+# (Title Case com "De"/"Do" maiusculos e acentos), conferidos na inspecao de
+# schema. Nesta revisao aparecem, do Nordeste, apenas 7 dos 9 estados
+# (Maranhao e Rio Grande Do Norte nao ocorrem); mantemo-los no mapa como
+# definicao canonica da regiao. Um casing divergente em revisao futura seria
+# capturado na lista de "fora de escopo" do relatorio.
 region_map:
-  # Nordeste
-  Maranhao: NE
-  Piaui: NE
-  Ceara: NE
-  Rio Grande do Norte: NE
-  Paraiba: NE
+  # Nordeste (presentes nesta revisao: todos menos Maranhao e RN)
+  Maranhão: NE
+  Piauí: NE
+  Ceará: NE
+  Rio Grande Do Norte: NE
+  Paraíba: NE
   Pernambuco: NE
   Alagoas: NE
   Sergipe: NE
   Bahia: NE
-  # Sudeste
+  # Sudeste (os 4 presentes)
   Minas Gerais: SE
-  Espirito Santo: SE
-  Rio de Janeiro: SE
-  Sao Paulo: SE
+  Espírito Santo: SE
+  Rio De Janeiro: SE
+  São Paulo: SE
 
 # Bordas de bucket etario - PROVISORIO, nao travar aqui.
 # A auditoria tambem emite a distribuicao etaria BRUTA por regiao
 # (age_distribution_by_region.csv) para decidir os buckets depois de ver o
 # confundidor (Nordeste mais jovem). Bordas semiabertas [inicio, fim).
+# Primeira borda em 16 para cobrir a idade minima real de informante (16 anos);
+# idades fora de [primeira, ultima) caem num bucket "fora_das_bordas" reportado.
 age_buckets:
-  edges: [18, 25, 35, 45, 60, 120]
+  edges: [16, 25, 35, 45, 60, 120]

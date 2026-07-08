@@ -2,7 +2,7 @@
 
 Artefato reprodutível e determinístico da Etapa 0. Nenhum áudio foi baixado ou decodificado; apenas metadados foram lidos.
 
-- **Gerado em (UTC):** 2026-07-08T00:35:47+00:00
+- **Gerado em (UTC):** 2026-07-08T01:52:03+00:00
 
 ## Proveniência e reprodutibilidade
 - Dataset: `nilc-nlp/CORAA-MUPE-ASR`
@@ -67,8 +67,26 @@ As duas contagens coincidem, então **`speaker_code` sozinho é a chave correta*
 
 O `birth_state` vazio corresponde a informantes nascidos fora do Brasil (`birth_country != 'Brazil'`, correlação 1:1): continuam contabilizados como informantes, mas sem região brasileira (fora de escopo).
 
+## Cobertura de estados do NE
+Estados do NE no mapa de região: 9. Com informantes (> 0 falantes): 7; ausentes (0 falantes): 2.
+
+| birth_state (NE) | falantes |
+|---|--:|
+| Alagoas | 3 |
+| Bahia | 14 |
+| Ceará | 4 |
+| Paraíba | 4 |
+| Pernambuco | 12 |
+| Piauí | 1 |
+| Sergipe | 1 |
+
+Estados do NE **ausentes** (0 falantes informantes): Maranhão, Rio Grande Do Norte.
+Observação: o `fora_de_escopo` inclui estados do Norte com peso não-trivial — Pará (19 falantes), Rondônia (11 falantes) — já listados na tabela de estados fora de escopo.
+
 ## Distribuição etária por região (buckets provisórios)
-Os buckets abaixo são PROVISÓRIOS. A distribuição etária BRUTA (idade a idade) está em `age_distribution_by_region.csv` — use-a para decidir as bordas depois de ver o confundidor (Nordeste tende a ser mais jovem).
+Idade no nível de falante (uma idade por `speaker_code`) — NE: mediana 50.0 anos (média 51.3); SE: mediana 55.0 anos (média 56.8). SE é mais velho que NE em 5.0 anos na mediana.
+
+Os buckets abaixo são PROVISÓRIOS. A distribuição etária BRUTA (idade a idade) está em `age_distribution_by_region.csv` — use-a para decidir as bordas.
 
 | região | bucket | falantes | segmentos | horas |
 |---|---|--:|--:|--:|
@@ -83,11 +101,70 @@ Os buckets abaixo são PROVISÓRIOS. A distribuição etária BRUTA (idade a ida
 | SE | [45,60) | 58 | 60.976 | 77.66 |
 | SE | [60,120) | 85 | 90.137 | 106.80 |
 
+## Painel de confundidores por região
+Todos os cruzamentos usam o filtro de informante (`speaker_type == 'R'`) e a chave `speaker_code`, com ordenação estável. As três regiões aparecem em todos; nenhuma categoria (inclusive 'unknown' e vazio) é omitida.
+
+### B1. Qualidade de áudio × região (nível de segmento)
+`audio_quality` é atributo de SEGMENTO, não de falante. Se o NE tiver proporção de `low` maior que o SE, parte de um eventual gap de acurácia seria artefato de gravação, não dialeto.
+
+| região | high | low | segmentos | % low | falantes | falantes c/ ≥1 low |
+|---|--:|--:|--:|--:|--:|--:|
+| NE | 39.147 | 1.816 | 40.963 | 4.43 | 39 | 38 |
+| SE | 185.390 | 12.626 | 198.016 | 6.38 | 193 | 192 |
+| fora_de_escopo | 47.210 | 3.754 | 50.964 | 7.37 | 57 | 56 |
+
+### B2. Gênero × região (nível de falante)
+(`speaker_gender` verificado 1:1 com `speaker_code`: 0 violações.)
+
+| região | F | M | X | total |
+|---|--:|--:|--:|--:|
+| NE | 21 | 18 | 0 | 39 |
+| SE | 87 | 106 | 0 | 193 |
+| fora_de_escopo | 28 | 29 | 0 | 57 |
+
+### B3. Escolaridade × região (nível de falante)
+(`education` verificado 1:1 com `speaker_code`: 0 violações.)
+
+| região | college | elementary | high | master | none | phd | unknown | total |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|
+| NE | 3 | 4 | 4 | 0 | 4 | 0 | 24 | 39 |
+| SE | 33 | 7 | 3 | 4 | 2 | 1 | 143 | 193 |
+| fora_de_escopo | 9 | 4 | 2 | 0 | 3 | 0 | 39 | 57 |
+
+Cobertura de `education == 'unknown'` (falantes) — NE: 61.5% (24/39); SE: 74.1% (143/193); fora_de_escopo: 68.4% (39/57); total: 71.3% (206/289).
+Uma cobertura de 'unknown' alta significa que o atributo é inutilizável como covariável de controle — limitação a ser DECLARADA na metodologia, não uma omissão.
+
+### B4. Categoria racial × região (nível de falante)
+(`racial_category` verificado 1:1 com `speaker_code`: 0 violações.)
+
+| região | Asian | Black | Pardo(mixed) | White | unknown | total |
+|---|--:|--:|--:|--:|--:|--:|
+| NE | 0 | 1 | 1 | 1 | 36 | 39 |
+| SE | 3 | 3 | 3 | 19 | 165 | 193 |
+| fora_de_escopo | 0 | 1 | 0 | 6 | 50 | 57 |
+
+Cobertura de `racial_category == 'unknown'` (falantes) — NE: 92.3% (36/39); SE: 85.5% (165/193); fora_de_escopo: 87.7% (50/57); total: 86.9% (251/289).
+Uma cobertura de 'unknown' alta significa que o atributo é inutilizável como covariável de controle — limitação a ser DECLARADA na metodologia, não uma omissão.
+
+### B5. Segmentos por falante × região (concentração)
+A fração no falante mais prolífico indica concentração / pseudo-replicação (quanto dos segmentos da região vem de um único falante).
+
+| região | falantes | mín | mediana | média | máx | frac. + prolífico |
+|---|--:|--:|--:|--:|--:|--:|
+| NE | 39 | 87 | 1034.0 | 1050.3 | 3.010 | 0.0735 |
+| SE | 193 | 64 | 962.0 | 1026.0 | 2.954 | 0.0149 |
+| fora_de_escopo | 57 | 132 | 893.0 | 894.1 | 2.107 | 0.0413 |
+
 ## Artefatos gerados
 - `speaker_counts_by_state.csv` — falantes e horas por `birth_state`.
 - `speaker_counts_by_region_age.csv` — cross-tab região × bucket etário.
 - `age_distribution_by_region.csv` — distribuição etária bruta por região.
 - `data_quality_report.csv` — sentinelas, `audio_quality`, `duration`, segmentos por falante.
+- `audio_quality_by_region.csv` — B1: qualidade × região (segmento).
+- `gender_by_region.csv` — B2: gênero × região (falante).
+- `education_by_region.csv` — B3: escolaridade × região (falante).
+- `racial_category_by_region.csv` — B4: categoria racial × região (falante).
+- `segments_per_speaker_by_region.csv` — B5: segmentos por falante × região.
 
 ## Inspeção de schema (bruta)
 ```

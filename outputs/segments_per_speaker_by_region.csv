@@ -1,0 +1,4 @@
+region,n_speakers,min_segments,median_segments,mean_segments,max_segments,region_segments,top_speaker_fraction
+NE,39,87,1034.0,1050.33,3010,40963,0.0735
+SE,193,64,962.0,1025.99,2954,198016,0.0149
+fora_de_escopo,57,132,893.0,894.11,2107,50964,0.0413

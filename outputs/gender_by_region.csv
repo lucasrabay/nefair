@@ -1,0 +1,10 @@
+region,speaker_gender,n_speakers
+NE,F,21
+NE,M,18
+NE,X,0
+SE,F,87
+SE,M,106
+SE,X,0
+fora_de_escopo,F,28
+fora_de_escopo,M,29
+fora_de_escopo,X,0

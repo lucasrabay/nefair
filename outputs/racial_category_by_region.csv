@@ -1,0 +1,16 @@
+region,racial_category,n_speakers
+NE,Asian,0
+NE,Black,1
+NE,Pardo(mixed),1
+NE,White,1
+NE,unknown,36
+SE,Asian,3
+SE,Black,3
+SE,Pardo(mixed),3
+SE,White,19
+SE,unknown,165
+fora_de_escopo,Asian,0
+fora_de_escopo,Black,1
+fora_de_escopo,Pardo(mixed),0
+fora_de_escopo,White,6
+fora_de_escopo,unknown,50

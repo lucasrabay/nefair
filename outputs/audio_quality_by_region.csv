@@ -1,0 +1,4 @@
+region,n_seg_high,n_seg_low,n_segments,pct_low,n_speakers,n_speakers_with_low_segment
+NE,39147,1816,40963,4.4333,39,38
+SE,185390,12626,198016,6.3763,193,192
+fora_de_escopo,47210,3754,50964,7.366,57,56

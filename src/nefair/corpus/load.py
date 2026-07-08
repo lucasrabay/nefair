@@ -39,8 +39,9 @@ from nefair.config import CorpusAuditConfig
 _DATA_PREFIX = "data"
 
 # Concorrência: o cliente httpx da huggingface_hub tem pool de 100 conexões.
-# shard_workers * fetch_workers deve ficar confortavelmente abaixo disso.
-_FETCH_WORKERS = 10  # range requests simultâneos por shard
+# shard_workers * fetch_workers deve ficar confortavelmente abaixo disso; valores
+# moderados também reduzem a chance de 429 (rate limit) da HF.
+_FETCH_WORKERS = 8  # range requests simultâneos por shard
 _SHARD_WORKERS = 6  # shards processados em paralelo (memória desprezível cada)
 # Intervalos separados por menos que isto são unidos numa única requisição.
 # 64 KiB é bem menor que o "buraco" de áudio (~12 MB): nunca baixamos áudio.
@@ -48,8 +49,10 @@ _COALESCE_GAP = 64 * 1024
 # Tamanho do bloco de footer a sondar (o metadado do arquivo cabe aqui).
 _FOOTER_PROBE = 256 * 1024
 _REQUEST_TIMEOUT = 60
-_MAX_RETRIES = 4
+# Retry com backoff exponencial; respeita Retry-After em 429 (rate limit).
+_MAX_RETRIES = 6
 _RETRY_BACKOFF = 0.5
+_RETRY_MAX_DELAY = 15.0
 
 
 @dataclass(frozen=True)
@@ -97,6 +100,20 @@ def list_split_files(
     return result
 
 
+def _retry_delay(exc: Exception, attempt: int) -> float:
+    """Segundos a esperar antes do próximo retry.
+
+    Backoff exponencial (limitado a `_RETRY_MAX_DELAY`); respeita `Retry-After`
+    quando a resposta é 429 (rate limit) ou 503.
+    """
+    response = getattr(exc, "response", None)
+    if response is not None and getattr(response, "status_code", None) in (429, 503):
+        retry_after = response.headers.get("Retry-After", "")
+        if retry_after.isdigit():
+            return min(float(retry_after), 30.0)
+    return min(_RETRY_BACKOFF * (2**attempt), _RETRY_MAX_DELAY)
+
+
 class _RangeReader:
     """Busca intervalos de bytes de um arquivo remoto via range requests."""
 
@@ -106,7 +123,11 @@ class _RangeReader:
         self._session = get_session()
 
     def _request(self, range_header: str):
-        """GET com o header Range dado, com retries em falhas transitórias."""
+        """GET com o header Range dado, com retries e backoff exponencial.
+
+        Trata falhas transitórias (timeout, reset, 5xx) e, em especial, 429
+        (rate limit da HF): respeita o header `Retry-After` quando presente.
+        """
         headers = dict(self._headers, Range=range_header)
         last: Exception | None = None
         for attempt in range(_MAX_RETRIES):
@@ -114,9 +135,11 @@ class _RangeReader:
                 resp = self._session.get(self._url, headers=headers, timeout=_REQUEST_TIMEOUT)
                 resp.raise_for_status()
                 return resp
-            except Exception as exc:  # noqa: BLE001 - timeout/reset/5xx transitórios
+            except Exception as exc:  # noqa: BLE001 - transitório (timeout/reset/5xx/429)
                 last = exc
-                time.sleep(_RETRY_BACKOFF * (attempt + 1))
+                if attempt == _MAX_RETRIES - 1:
+                    break
+                time.sleep(_retry_delay(exc, attempt))
         raise RuntimeError(f"falha ao ler {self._url} ({range_header})") from last
 
     def get(self, lo: int, hi: int) -> tuple[int, bytes]:

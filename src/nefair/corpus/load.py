@@ -354,3 +354,18 @@ def load_metadata(config: CorpusAuditConfig, token: str | None = None) -> LoadRe
         ),
         split_row_counts=split_row_counts,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Superfície pública para reuso pela Etapa 2 (download seletivo de áudio)
+#
+# A leitura por intervalos de bytes desenvolvida aqui é exatamente o que a Etapa 2
+# precisa — muda só a coluna buscada: lá, `audio`, e apenas nos row groups que
+# contêm segmentos de janelas selecionadas. Expomos os nomes em vez de duplicar a
+# lógica de range request, retry e arquivo esparso.
+# --------------------------------------------------------------------------- #
+RangeReader = _RangeReader
+SparseFile = _SparseFile
+coalesce_ranges = _coalesce
+COALESCE_GAP = _COALESCE_GAP
+FOOTER_PROBE = _FOOTER_PROBE

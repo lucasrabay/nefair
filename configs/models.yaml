@@ -1,0 +1,87 @@
+# Modelos avaliados (Etapas 4-5).
+#
+# ATENCAO: `version` deve ser fixado no DIA da execucao e reportado no texto.
+# Os valores abaixo sao PLACEHOLDERS ate que haja credencial de provedor; a
+# execucao completa recusa rodar enquanto `contamination_checked` for false.
+
+# ASR UNICO compartilhado por todas as cascatas, para que a condicao `asr` varie
+# somente o LLM (secao Configuracoes avaliadas).
+asr:
+  spec:
+    provider: local
+    model_id: openai/whisper-large-v3
+    version: PLACEHOLDER-fixar-no-dia-da-execucao
+    role: asr
+    family: whisper
+    params:
+      language: pt
+      temperature: 0.0
+
+  # D8 - contaminacao. Whisper ajustado para PT-BR pode ter sido treinado sobre
+  # o proprio CORAA/MuPe. Enquanto isto for `false`, o script 06 RECUSA a
+  # execucao completa (barato, e evita rodar a Etapa 5 inteira sobre um ASR
+  # possivelmente contaminado).
+  contamination_checked: false
+  contamination_note: >-
+    Verificar o card de treino do checkpoint. Se houver sobreposicao com
+    CORAA/MuPe, usar o Whisper base ou restringir ao split `test`.
+  # Preencher com `test` se a mitigacao escolhida for restringir o split.
+  split_restriction: null
+
+# Modelos avaliados, por chave curta. `family` e o que permite o pareamento
+# nativo x cascata exigido pelo texto (mesmo LLM nas duas familias).
+specs:
+  openai_audio:
+    provider: openai
+    model_id: PLACEHOLDER-gpt-audio
+    version: PLACEHOLDER
+    role: audio_qa
+    family: openai
+    params: { temperature: 0.0, max_output_tokens: 16 }
+  openai_text:
+    provider: openai
+    model_id: PLACEHOLDER-gpt-audio
+    version: PLACEHOLDER
+    role: text_qa
+    family: openai
+    params: { temperature: 0.0, max_output_tokens: 16 }
+  google_audio:
+    provider: google
+    model_id: PLACEHOLDER-gemini
+    version: PLACEHOLDER
+    role: audio_qa
+    family: google
+    params: { temperature: 0.0, max_output_tokens: 16 }
+  google_text:
+    provider: google
+    model_id: PLACEHOLDER-gemini
+    version: PLACEHOLDER
+    role: text_qa
+    family: google
+    params: { temperature: 0.0, max_output_tokens: 16 }
+  qwen_audio:
+    provider: qwen
+    model_id: PLACEHOLDER-qwen-omni
+    version: PLACEHOLDER
+    role: audio_qa
+    family: qwen
+    params: { temperature: 0.0, max_output_tokens: 16 }
+  qwen_text:
+    provider: qwen
+    model_id: PLACEHOLDER-qwen-omni
+    version: PLACEHOLDER
+    role: text_qa
+    family: qwen
+    params: { temperature: 0.0, max_output_tokens: 16 }
+
+# Pareamento: para cada familia, o mesmo LLM entra como nativo (audio ->
+# resposta) e como ponta da cascata (ASR -> texto). E isso que faz a diferenca
+# entre as duas condicoes ser atribuivel a via, e nao ao modelo.
+paired:
+  - { family: openai, native: openai_audio, cascade: openai_text }
+  - { family: google, native: google_audio, cascade: google_text }
+  - { family: qwen,   native: qwen_audio,   cascade: qwen_text }
+
+# D9 - modelos sem entrada de audio nativa (ex.: Claude) nao podem ser pareados.
+# Se entrarem, entram como cascata extra, FORA da comparacao pareada.
+unpaired_extra: []

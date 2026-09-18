@@ -1,0 +1,1 @@
+"""Pacote analysis do nefair."""

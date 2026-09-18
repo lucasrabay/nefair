@@ -1,0 +1,60 @@
+# Etapa 3 - geracao, filtro textual e revisao de itens.
+
+seed: 20260918
+
+# "dez itens por falante" com dez janelas por falante -> um item por janela.
+n_items_per_window: 1
+
+# Uma correta + tres incorretas.
+n_alternatives: 4
+
+# D11 - LLM GERADOR. NAO pode ser nenhum dos modelos avaliados: se fosse, o
+# experimento mediria em parte a afinidade de cada modelo com o estilo de quem
+# escreveu as perguntas, e o gerador partiria na frente. A carga do config
+# valida isso por `model_id` e falha se houver colisao com models.yaml.
+generator:
+  provider: anthropic
+  model_id: PLACEHOLDER-modelo-gerador-fora-do-conjunto-avaliado
+  version: PLACEHOLDER
+  role: text_qa
+  family: generator
+  params: { temperature: 0.2, max_output_tokens: 1024 }
+
+# D2 - mecanismo dos distratores. O texto diz que o LLM "propoe" as incorretas,
+# mas que elas sao "extraidas de outros trechos". Resolvemos exigindo as duas
+# coisas: o prompt recebe outros trechos da mesma entrevista e cada distrator
+# precisa declarar de qual janela saiu. Distrator sem proveniencia = item
+# malformado, descartado e contado.
+distractors:
+  source: other_windows_same_interview
+  require_provenance: true
+  n_context_windows: 3
+
+# D3 - controle textual: item respondivel sem audio e sem transcricao e um item
+# ruim. Temperatura > 0 e ordem embaralhada sao o que dao sentido a "maioria de
+# tres execucoes" (com temperatura 0 e ordem fixa, as tres respostas seriam
+# identicas e o criterio de maioria seria vazio).
+#
+# Linha de base de acaso: um item que de fato exige audio, respondido ao acaso
+# (p = 0,25), passa no criterio 2-de-3 com probabilidade ~0,156. Esse numero e
+# CALCULADO em codigo e reportado junto a taxa de descarte.
+text_filter:
+  models: [openai_text, google_text, qwen_text]
+  temperature: 0.7
+  n_runs: 3
+  discard_if_correct_at_least: 2
+  shuffle_alternatives: true
+  # Se QUALQUER modelo passar no criterio, o item cai.
+  any_model_discards: true
+  seed: 20260918
+
+# Piloto antes de escalar: 12 falantes, 6 por regiao, dentro de 20-69 anos.
+pilot:
+  n_speakers_per_region: 6
+  regions: [NE, SE]
+  age_range: [20, 69]
+  seed: 20260918
+
+# Vocabulario fechado de decisao da revisao humana. Valor fora desta lista faz o
+# importador da planilha FALHAR, em vez de aceitar uma decisao ambigua.
+review_decisions: [accepted, rejected]

@@ -1,0 +1,29 @@
+# Etapas 4-5 - execucao item x configuracao x condicao.
+
+seed: 20260918
+
+# Condicoes (secao Condicoes de controle e decomposicao do erro):
+#   asr       - o LLM recebe a hipotese do ASR
+#   reference - o LLM recebe a transcricao de referencia (teto da cascata)
+#   audio     - o modelo multimodal recebe o audio
+conditions: [asr, reference, audio]
+
+# Cache JSONL append-only. A chave e o hash de
+# (item, modelo+versao+params, condicao, versao do prompt, permutacao).
+# Reexecucao le do cache e nunca paga duas vezes; interrupcao e retomavel.
+cache_path: outputs/run_cache.jsonl
+
+# Concorrencia moderada e retry com backoff, no mesmo espirito do loader da
+# Etapa 0 (evita 429 do provedor).
+max_concurrency: 4
+max_retries: 6
+
+# A permutacao das alternativas e derivada de (item_id, model_key, seed) e e a
+# MESMA entre as condicoes `asr` e `reference` do mesmo item: sem isso, a
+# diferenca de acuracia entre condicoes misturaria efeito de via com efeito de
+# posicao da alternativa correta.
+shuffle_alternatives: true
+
+# D8 - recusar a execucao completa enquanto a contaminacao do ASR nao tiver sido
+# verificada em models.yaml.
+require_contamination_check: true

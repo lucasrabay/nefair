@@ -1,0 +1,1 @@
+"""Pacote asr do nefair."""

@@ -13,9 +13,13 @@ authors = [{ name = "Lucas Rabay" }]
 dependencies = [
     "datasets>=3.0",
     "huggingface_hub>=0.25",
+    "numpy>=1.26",
     "pandas>=2.0",
     "pyarrow>=17.0",
     "pyyaml>=6.0",
+    "jiwer>=3.0",
+    "statsmodels>=0.14",
+    "soundfile>=0.12",
 ]
 
 # Compatibilidade com `pip install -e .` (runtime) e `pip install -e ".[dev]"` (dev).
@@ -23,6 +27,18 @@ dependencies = [
 dev = [
     "ruff>=0.6",
     "pytest>=8.0",
+]
+# SDKs de provedor: NUNCA importados no topo de um módulo (import preguiçoso nos
+# adaptadores). A suíte de testes roda inteira sem nenhum deles instalado.
+providers = [
+    "openai>=1.40",
+    "google-genai>=0.3",
+]
+# Pesos locais (Whisper, Qwen). Pesado; só instalar quando a configuração
+# open-weight entrar de fato.
+local = [
+    "torch>=2.2",
+    "transformers>=4.44",
 ]
 
 # Grupo de dev nativo do uv (instalado por padrao em `uv sync`).

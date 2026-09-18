@@ -1,0 +1,50 @@
+# Etapa 1 - janelas de fala continua (SO metadados; nenhum audio e baixado).
+#
+# A revisao (SHA) do dataset e o mapa de regiao vem do config da Etapa 0: uma
+# unica fonte de verdade para todas as etapas.
+base_config: corpus_audit.yaml
+
+windows:
+  # Semente da amostragem estratificada por posicao. Determinismo total: a
+  # semente efetiva de cada falante deriva de (seed, speaker_code), nunca de um
+  # RNG global compartilhado entre falantes.
+  seed: 20260918
+
+  # "janela de trinta a sessenta segundos de fala continua" (principal.tex).
+  min_duration_s: 30.0
+  max_duration_s: 60.0
+
+  # "entre oito e quinze segmentos consecutivos". As DUAS condicoes valem ao
+  # mesmo tempo: duracao somada na faixa E contagem de segmentos na faixa.
+  min_segments: 8
+  max_segments: 15
+
+  # Lacuna maxima tolerada entre end_time[i] e start_time[i+1] para que dois
+  # segmentos ainda contem como contiguos. Acima disso a janela fecha.
+  gap_tolerance_s: 0.5
+
+  # D1 - turno do entrevistador no meio da janela.
+  #   close_window : um turno P/* entre dois segmentos R FECHA a janela.
+  #   ignore       : segmentos R separados por turno de entrevistador podem
+  #                  entrar na mesma janela.
+  # A deteccao so e possivel ANTES do filtro de informante; depois de filtrar,
+  # o turno do entrevistador ja nao esta no frame e a fala pareceria continua.
+  interviewer_turn: close_window
+
+  # "dez itens por falante" -> dez janelas por falante.
+  n_windows_per_speaker: 10
+
+  # D5 - falantes que nao comportam 10 janelas disjuntas (o minimo observado e
+  # 64 segmentos no SE e 87 no NE; com >= 8 segmentos por janela, 64 segmentos
+  # dao no maximo 8 janelas). Aceitar menos janelas e CONTAR, em vez de
+  # sobrepor janelas e criar pseudo-replicacao dentro do falante.
+  allow_fewer_windows: true
+
+  # D7 - campo usado como transcricao de referencia da janela.
+  reference_field: normalized_text
+
+  # Estimativas do texto ficam restritas a 20-69 anos.
+  age_range: [20, 69]
+
+  # Regioes em escopo. `fora_de_escopo` nunca entra.
+  regions: [NE, SE]

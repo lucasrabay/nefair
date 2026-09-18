@@ -1,0 +1,55 @@
+# Etapa 6 - regressao, decomposicao, sensibilidade e export para LaTeX.
+
+# Estimativas restritas a 20-69 anos (principal.tex, secao Metricas).
+age_range: [20, 69]
+
+# D6 - covariaveis do modelo `acerto ~ ...`. O texto mostra cobertura completa
+# de genero mas NAO o inclui no modelo. Decisao pendente com o orientador; se
+# genero entrar, acrescentar `speaker_gender` aqui E na secao de Metricas do
+# texto. Escolaridade e categoria racial NAO sao usaveis: a cobertura de
+# 'unknown' e alta demais (ver painel de confundidores da Etapa 0).
+covariates: [region, age]
+
+# D7 - referencia e normalizacao do WER. A MESMA normalizacao e aplicada a
+# referencia e a hipotese; aplica-la so a um dos lados inventaria erros.
+wer:
+  reference_field: normalized_text
+  normalizer_version: v1
+
+# Bootstrap no NIVEL DO FALANTE, estratificado por regiao: reamostra 39 NE e
+# 193 SE separadamente. Sem estratificar, reamostras com pouquissimos falantes
+# do NE alargariam o IC por artefato de reamostragem, nao por incerteza real.
+# As MESMAS reamostras sao reusadas entre condicoes, preservando o pareamento
+# item a item exigido pela decomposicao.
+bootstrap:
+  n_resamples: 2000
+  seed: 20260918
+  stratify_by: region
+  ci_level: 0.95
+
+# D4 - teto da tarefa para Delta_raciocinio = teto - acc(ref).
+#   constructed  : 1.0 por construcao (itens revisados sobre a referencia)
+#   human_sample : acuracia humana medida numa amostra
+# O modo usado e ROTULADO na saida: a decomposicao nao e comparavel entre modos.
+task_ceiling:
+  mode: constructed
+  value: 1.0
+
+sensitivity:
+  # Barato: subamostragem dos itens ja coletados.
+  n_items:
+    enabled: true
+    grid: [3, 5, 8, 10]
+  # Barato: reestimacao em subconjuntos por faixa de duracao de janela.
+  window_duration:
+    enabled: true
+    bins: [30.0, 40.0, 50.0, 60.0]
+  # D10 - CARO: regerar com 3/5 alternativas duplica a revisao humana, que ja e
+  # o caminho critico do cronograma. Desligado por padrao; se ligar, so no
+  # subconjunto do piloto.
+  n_alternatives:
+    enabled: false
+    scope: pilot
+
+# Destino das tabelas LaTeX geradas.
+latex_source: outputs/latex

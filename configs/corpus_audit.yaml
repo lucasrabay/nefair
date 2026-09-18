@@ -7,8 +7,9 @@ dataset:
   # Revisao (commit SHA ou tag) fixada para reprodutibilidade.
   # Deixe `null` para usar a revisao default do repositorio; a revisao
   # efetivamente resolvida (SHA) e sempre registrada no relatorio de saida.
-  # PREENCHA com o SHA apos a primeira execucao para travar a fonte.
-  revision: null
+  # Fixada apos a Etapa 0: esta e a fonte de verdade da revisao para TODAS as
+  # etapas (windows.yaml e as seguintes herdam via `base_config`).
+  revision: d3d5f9c699bd619f9e1c45681cabf214d1b080e1
   splits:
     - train
     - validation

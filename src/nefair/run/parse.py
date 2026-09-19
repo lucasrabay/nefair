@@ -171,12 +171,16 @@ def _is_one_letter_word(text: str, index: int, char: str) -> bool:
 
     Duas formas:
     - minúscula "a"/"e"/"o" — sempre palavra em texto corrido;
-    - "A"/"E" maiúsculos seguidos de palavra minúscula — abertura de oração,
-      como em "A resposta é C" ou "E o falante diz...".
+    - "A"/"E"/"O" maiúsculos seguidos de palavra minúscula — abertura de oração,
+      como em "A resposta é C", "E o falante diz..." ou "O falante menciona...".
+
+    "O" maiúsculo entra na regra pelo mesmo motivo que "A" e "E", e sem custo:
+    `ALTERNATIVE_LABELS` vai só até "E", então "O" nunca é rótulo de alternativa
+    e nada que fosse resposta válida deixa de sê-lo.
     """
     if char in _ONE_LETTER_WORDS:
         return True
-    if char in ("A", "E"):
+    if char in ("A", "E", "O"):
         rest = text[index + 1 :].lstrip()
         return bool(rest) and rest[0].islower()
     return False
@@ -301,8 +305,19 @@ def parse_label(raw_text: str, labels: Sequence[str] = DEFAULT_LABELS) -> ParseR
     # Nenhuma estratégia achou letra válida. Distinguimos "o modelo escreveu uma
     # letra que não existe neste item" (útil: sinaliza prompt ou `n_alternatives`
     # errados) de "o modelo não escreveu letra nenhuma" (prosa pura).
+    #
+    # O filtro `_is_one_letter_word` é o MESMO da estratégia 5, e por identidade
+    # de motivo: "a", "e" e "o" são palavras do português e aparecem em quase
+    # toda prosa. Sem ele, "Acho que o falante fala de futebol" seria reportado
+    # como `letra_fora_do_vocabulario` por causa do artigo "o", e a categoria
+    # deixaria de sinalizar o que existe para sinalizar — prompt ou
+    # `n_alternatives` errados.
     foreign = _dedupe(
-        [char.upper() for _, char in _isolated_letters(text) if char.upper() not in valid]
+        [
+            char.upper()
+            for index, char in _isolated_letters(text)
+            if char.upper() not in valid and not _is_one_letter_word(text, index, char)
+        ]
     )
     if foreign:
         return ParseResult(label=None, strategy="", reason=REASON_OUT_OF_VOCAB, candidates=foreign)

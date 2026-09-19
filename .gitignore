@@ -223,3 +223,13 @@ __marimo__/
 /outputs/dumps/
 /outputs/*.parquet
 /outputs/schema_inspection.txt
+
+# nefair - Etapas 1-6: artefatos grandes e transitorios.
+# Os RELATORIOS (.md) e as tabelas LaTeX sao versionados; os dados intermediarios
+# (janelas, audio, cache de execucao) nao.
+/outputs/windows.parquet
+/outputs/audio/
+/outputs/audio_manifest.csv
+/outputs/items*.jsonl
+/outputs/run_cache.jsonl
+/outputs/review_sheet*.csv

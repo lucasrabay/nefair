@@ -175,7 +175,20 @@ def run_filter_for_item(
 
     Os modelos são percorridos em ordem alfabética de chave para que a trilha de
     execuções seja byte a byte reprodutível.
+
+    Sem nenhum modelo não há filtro: a etapa não rodou. Isso precisa falhar alto
+    porque as duas saídas silenciosas possíveis são igualmente erradas — marcar
+    tudo como `kept` mandaria itens não filtrados para a Etapa 5, e marcar tudo
+    como descartado (que era o efeito de `len(triggering) == len(models)` com
+    `0 == 0` sob `any_model_discards=False`) esvaziaria o conjunto declarando um
+    vazamento que ninguém mediu.
     """
+    if not models:
+        raise ValueError(
+            "Controle textual (D3) sem nenhum modelo: não dá para decidir se o item "
+            "é respondível sem a fala. Configure `items.text_filter.models`."
+        )
+
     runs: list[FilterRun] = []
     n_correct: dict[str, int] = {}
     n_unparsed: dict[str, int] = {}

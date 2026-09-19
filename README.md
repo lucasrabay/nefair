@@ -61,3 +61,50 @@ gitignorados.
 
 Rodar duas vezes gera saídas idênticas byte a byte (exceto o campo de timestamp,
 isolado no relatório).
+
+## Etapas 1-6: pipeline de avaliação
+
+O plano de origem está em `docs/plano_implementacao.md` (inclui as decisões
+pendentes D1-D11); o plano restrito ao código, em `docs/plano_codigo.md`.
+
+**Nenhuma decisão pendente virou default escondido.** Cada uma é uma chave
+nomeada num YAML de `configs/`, com o valor efetivo ecoado no relatório da
+etapa. Duas são aplicadas pelo próprio código:
+
+- **D11** — `validate_cross_config` recusa a execução se o LLM gerador dos itens
+  estiver entre os modelos avaliados (o gerador partiria na frente).
+- **D8** — a execução completa se recusa a rodar enquanto a contaminação do ASR
+  não for verificada em `models.yaml`.
+
+### Estado atual
+
+| Etapa | Módulos | Script | Testes |
+|---|---|---|---|
+| 1 — janelas | `corpus/windows.py` | `01_build_windows.py` | 33 |
+| 2 — áudio | `corpus/audio.py` | `02_fetch_audio.py` | 38 |
+| 3 — itens | `items/{generate,filter,review}.py`, `models/prompts.py` | `03`, `04`, `05` | 56 |
+| 4-5 — execução | `run/{parse,runner}.py` | — (falta o `06`) | 67 |
+| 6 — análise | `metrics/*`, `analysis/{regression,decompose,sensitivity}.py` | — (falta o `07`) | 108 |
+
+Pendentes: `src/nefair/analysis/export.py` (tabelas LaTeX), `scripts/06_run_eval.py`
+e `scripts/07_analyze.py`.
+
+### Provedores
+
+Não há chave de API no projeto. Todo provedor (ASR, LLM de texto, multimodal)
+fica atrás de um `Protocol` em `src/nefair/models/base.py`, com implementações
+**falsas determinísticas** usadas nos testes. Os adaptadores reais são stubs com
+o contrato documentado: sem credencial não há como validá-los, e código não
+verificável envelhece mal. Nenhum SDK é importado no topo de módulo.
+
+Consequência prática: **a suíte inteira roda offline, sem credencial nenhuma.**
+
+### Testes
+
+```bash
+uv run pytest -q          # 320 testes, ~3 s, sem rede
+uv run ruff check . && uv run ruff format --check .
+```
+
+A suíte é determinística: duas execuções produzem resultado idêntico teste a
+teste, e o resultado não depende de `PYTHONHASHSEED`.

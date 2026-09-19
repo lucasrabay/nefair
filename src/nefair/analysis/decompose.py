@@ -68,8 +68,7 @@ class CeilingSpec:
     def __post_init__(self) -> None:
         if self.mode not in ("constructed", "human_sample"):
             raise ValueError(
-                f"Modo de teto (D4) inválido: '{self.mode}'. "
-                "Use 'constructed' ou 'human_sample'."
+                f"Modo de teto (D4) inválido: '{self.mode}'. Use 'constructed' ou 'human_sample'."
             )
         if not 0.0 <= self.value <= 1.0:
             raise ValueError(f"Teto fora de [0, 1]: {self.value}.")

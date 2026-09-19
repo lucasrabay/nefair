@@ -292,6 +292,26 @@ def expand_numbers(text: str) -> str:
 # porque ali ele une uma palavra só.
 _SPACE_PUNCTUATION = frozenset("-–—/\\_")
 _DROP_PUNCTUATION = frozenset("'’`´")
+# Indicadores de ordinal. Precisam de menção EXPLÍCITA porque o Unicode os
+# classifica como letras (categoria Lo) e `str.isalnum()` os aprova — eles não
+# caem no ramo genérico de pontuação abaixo.
+_ORDINAL_INDICATORS = frozenset("ºª")
+
+
+def _is_word_character(char: str) -> bool:
+    """Letra ou dígito de VERDADE — marcadores tipográficos não contam.
+
+    `str.isalnum()` sozinho não serve: `º`/`ª` são categoria Lo e `²`, `³`, `½`
+    são categoria No, então todos passariam e sobreviveriam como tokens soltos.
+    `2ª` viraria `dois ª` (a regra 4 já converteu o `2`), um token a mais que a
+    referência do corpus — uma INSERÇÃO fabricada pelo normalizador e cobrada do
+    modelo. São marcas de escrita, não de fala; o falante diz só "segunda".
+    """
+    if char in _ORDINAL_INDICATORS:
+        return False
+    if unicodedata.category(char) == "No":
+        return False
+    return char.isalnum()
 
 
 def strip_punctuation(text: str) -> str:
@@ -307,11 +327,12 @@ def strip_punctuation(text: str) -> str:
             out.append(" ")
         elif char in _DROP_PUNCTUATION:
             continue
-        elif char.isalnum() or char.isspace():
+        elif char.isspace() or _is_word_character(char):
             out.append(char)
         else:
-            # Toda a categoria Unicode de pontuação e símbolos (P*, S*) cai aqui,
-            # inclusive `º`, `ª`, `%`, `$` e reticências.
+            # Toda a categoria Unicode de pontuação e símbolos (P*, S*) cai aqui
+            # — `%`, `$`, reticências — junto com os marcadores tipográficos que
+            # o `isalnum()` deixaria passar (`º`, `ª`, `²`).
             out.append(" ")
     return "".join(out)
 
@@ -370,8 +391,7 @@ def normalize(text: str, version: str = NORMALIZER_VERSION) -> str:
     """
     if version not in _PIPELINES:
         raise ValueError(
-            f"Versão de normalizador desconhecida: '{version}'. "
-            f"Disponíveis: {sorted(_PIPELINES)}."
+            f"Versão de normalizador desconhecida: '{version}'. Disponíveis: {sorted(_PIPELINES)}."
         )
     out = text
     for _, rule in _PIPELINES[version]:

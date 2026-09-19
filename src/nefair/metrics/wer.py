@@ -91,9 +91,7 @@ def count_edits(
         # Hipótese vazia é legítima (o ASR não reconheceu nada): tudo vira
         # deleção. `jiwer` não aceita string vazia, então a contagem é direta.
         n_ref = len(ref_norm.split())
-        return EditCounts(
-            substitutions=0, insertions=0, deletions=n_ref, n_reference_words=n_ref
-        )
+        return EditCounts(substitutions=0, insertions=0, deletions=n_ref, n_reference_words=n_ref)
     output = jiwer.process_words(
         ref_norm,
         hyp_norm,

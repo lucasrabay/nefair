@@ -192,9 +192,7 @@ def sensitivity_n_items(
     """Reestima o gap com `k` itens por falante, para cada `k` da grade."""
     notes: list[str] = []
     if not enabled:
-        notes.append(
-            "Eixo desligado em `analysis.yaml` (`sensitivity.n_items.enabled: false`)."
-        )
+        notes.append("Eixo desligado em `analysis.yaml` (`sensitivity.n_items.enabled: false`).")
         return SensitivityOutcome("n_itens_por_falante", False, _empty_table(), notes)
 
     rows: list[dict[str, object]] = []
@@ -286,8 +284,7 @@ def sensitivity_window_duration(
             notes.append(f"{label}: nenhuma janela nesta faixa; variante não estimada.")
             continue
         notes.append(
-            f"{label}: {len(subset)} ensaios, "
-            f"{subset['speaker_code'].nunique()} falante(s)."
+            f"{label}: {len(subset)} ensaios, {subset['speaker_code'].nunique()} falante(s)."
         )
         rows.extend(
             _estimate_subset(

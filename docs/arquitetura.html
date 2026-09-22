@@ -59,47 +59,35 @@
     font-size: 16.5px;
     line-height: 1.64;
     margin: 0;
-    padding: 0 1.25rem 5rem;
+    padding: 3.5rem 1.25rem 5rem;
     -webkit-font-smoothing: antialiased;
   }
 
   .wrap { max-width: 40rem; margin: 0 auto; }
   .wide { max-width: 58rem; margin: 0 auto; }
 
-  header {
-    max-width: 40rem;
-    margin: 0 auto;
-    padding: 4rem 0 0.5rem;
-  }
-  .eyebrow {
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin: 0 0 1rem;
-  }
-  h1 {
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: clamp(1.9rem, 5vw, 2.5rem);
-    line-height: 1.15;
-    letter-spacing: -0.015em;
-    text-wrap: balance;
-    margin: 0 0 1.4rem;
-  }
-
-  p { margin: 0 0 1.1rem; text-wrap: pretty; }
-  .salutation { font-family: var(--serif); font-size: 1.1rem; margin-bottom: 1.2rem; }
-
   h2 {
     font-family: var(--serif);
     font-weight: 600;
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     letter-spacing: -0.008em;
     text-wrap: balance;
-    margin: 3.25rem 0 0.6rem;
+    margin: 0 0 1rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
   }
+  h2 .num {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--accent);
+    flex: none;
+  }
+  section + section { margin-top: 4rem; }
+
+  p { margin: 0 0 1.05rem; text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
 
   code {
     font-family: var(--mono);
@@ -111,7 +99,7 @@
   }
 
   figure {
-    margin: 1.75rem 0 2.25rem;
+    margin: 1.9rem 0 0;
     background: var(--surface);
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -135,7 +123,6 @@
     border-top: 1px solid var(--line);
     text-wrap: pretty;
   }
-  figcaption b { color: var(--ink); font-weight: 600; }
 
   /* tipografia dos diagramas */
   .d-box { fill: var(--surface); stroke: var(--line-firm); stroke-width: 1.2; }
@@ -153,53 +140,23 @@
   .s-ok { stroke: var(--ok); }
   .s-pend { stroke: var(--pending); }
 
-  .asks { margin: 1.5rem 0 0; padding: 0; list-style: none; }
-  .asks li {
-    border-left: 2px solid var(--pending);
-    padding: 0 0 0 1rem;
-    margin-bottom: 1.15rem;
-  }
-  .asks b { font-weight: 600; }
-
-  .signoff {
-    margin-top: 3rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--line);
-    font-family: var(--serif);
-    font-size: 1.05rem;
-  }
-  .signoff .name { display: block; margin-top: 0.4rem; }
-  .signoff .note {
-    font-family: var(--sans);
-    font-size: 0.82rem;
-    color: var(--muted);
-    margin-top: 1.5rem;
-  }
-
   @media (max-width: 40rem) {
-    body { font-size: 16px; padding: 0 1rem 3.5rem; }
-    header { padding-top: 2.75rem; }
+    body { font-size: 16px; padding: 2.5rem 1rem 3.5rem; }
     figure { padding: 1rem 0.7rem 0.8rem; }
   }
 </style>
 
-<header>
-  <p class="eyebrow">nefair · Etapas 1–6</p>
-  <h1>Onde a infraestrutura está</h1>
-</header>
-
-<main class="wrap">
-  <p class="salutation">Professor,</p>
-  <p>Segue o resumo rápido que combinamos, com os dois desenhos: o pipeline de avaliação e a organização do código. Não repito o desenho do estudo, que o senhor já conhece — são só os dois quadros e três pontos que preciso fechar com o senhor.</p>
-  <p>O código das seis etapas está escrito e verificado: <strong>320 testes passando</strong>, rodando em cerca de três segundos, sem rede e sem nenhuma chave de API.</p>
-
-  <h2>1. O pipeline</h2>
-  <p>Do corpus até a decomposição do erro. O miolo é a bifurcação em três vias.</p>
-</main>
+<section>
+<div class="wrap">
+  <h2><span class="num">1</span> O pipeline</h2>
+  <p>O corpus entra à esquerda e vira janelas de 30 a 60 segundos de fala contínua. Sobre cada janela é construído um item de múltipla escolha, que passa por um filtro automático e por revisão humana antes de valer.</p>
+  <p>O miolo do desenho é a bifurcação: o mesmo item é respondido por três vias. O modelo multimodal ouve o áudio. A cascata transcreve primeiro e só depois lê. A terceira via lê a transcrição correta, sem passar por reconhecimento de fala.</p>
+  <p>As duas vias da direita diferem por um único salto, o ASR, e é por isso que a subtração entre elas isola a perda na transcrição. O que sobra entre a leitura da transcrição correta e o teto é a perda na compreensão.</p>
+</div>
 
 <div class="wide">
 <figure>
-<svg viewBox="0 0 880 516" role="img" aria-label="Pipeline do nefair: o corpus gera janelas de fala contínua, sobre as quais são construídos itens de múltipla escolha; cada item é respondido por três vias — o modelo multimodal ouvindo o áudio, a cascata que transcreve antes de ler, e a leitura da transcrição de referência — e a diferença entre as duas últimas isola a perda na transcrição.">
+<svg viewBox="0 0 880 516" role="img" aria-label="Pipeline do nefair: o corpus gera janelas de fala contínua, sobre as quais são construídos itens de múltipla escolha; cada item é respondido por três vias — o modelo multimodal ouvindo o áudio, a cascata que transcreve antes de ler, e a leitura da transcrição correta — e a diferença entre as duas últimas isola a perda na transcrição.">
   <defs>
     <marker id="p-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
@@ -209,7 +166,6 @@
     </marker>
   </defs>
 
-  <!-- preparação -->
   <rect x="40" y="30" width="200" height="54" rx="4" class="d-box"/>
   <text x="140" y="52" class="d-t" text-anchor="middle">CORAA-MUPE</text>
   <text x="140" y="70" class="d-s" text-anchor="middle">39 falantes NE · 193 SE</text>
@@ -226,20 +182,17 @@
   <text x="650" y="52" class="d-t" text-anchor="middle">Etapa 3 · Itens</text>
   <text x="650" y="70" class="d-s" text-anchor="middle">gerados · filtrados · revisados</text>
 
-  <!-- distribuição para as três vias -->
   <line x1="650" y1="84" x2="650" y2="118" class="d-line"/>
   <line x1="150" y1="118" x2="730" y2="118" class="d-line"/>
   <line x1="150" y1="118" x2="150" y2="234" class="d-line" marker-end="url(#p-ar)"/>
   <line x1="440" y1="118" x2="440" y2="148" class="d-line" marker-end="url(#p-ar)"/>
   <line x1="730" y1="118" x2="730" y2="234" class="d-line" marker-end="url(#p-ar)"/>
 
-  <!-- o salto extra da cascata -->
   <rect x="340" y="152" width="200" height="54" rx="4" class="d-box"/>
   <text x="440" y="174" class="d-t" text-anchor="middle">ASR compartilhado</text>
   <text x="440" y="192" class="d-s" text-anchor="middle">um só, para as duas cascatas</text>
   <line x1="440" y1="206" x2="440" y2="234" class="d-line" marker-end="url(#p-ar)"/>
 
-  <!-- os três modelos que respondem, alinhados -->
   <rect x="50" y="238" width="200" height="56" rx="4" class="d-box"/>
   <text x="150" y="261" class="d-t" text-anchor="middle">Multimodal nativo</text>
   <text x="150" y="279" class="d-s" text-anchor="middle">ouve o áudio</text>
@@ -260,12 +213,10 @@
   <text x="440" y="338" class="d-eq" text-anchor="middle">acc(asr)</text>
   <text x="730" y="338" class="d-eq" text-anchor="middle">acc(ref)</text>
 
-  <!-- o pareamento entre as duas vias comparadas -->
   <path d="M 440 352 L 440 366 L 730 366 L 730 352" class="d-accent"/>
   <text x="585" y="384" class="d-m f-acc" text-anchor="middle">mesmo item · mesma ordem das alternativas</text>
   <line x1="585" y1="392" x2="585" y2="412" class="d-accent" marker-end="url(#p-ar-a)"/>
 
-  <!-- decomposição -->
   <rect x="140" y="414" width="600" height="82" rx="4" class="d-box"/>
   <text x="440" y="438" class="d-t" text-anchor="middle">Decomposição do erro</text>
   <text x="290" y="462" class="d-eq" text-anchor="middle">acc(ref) − acc(asr)</text>
@@ -274,14 +225,18 @@
   <text x="590" y="480" class="d-s" text-anchor="middle">perda na compreensão</text>
   <line x1="440" y1="450" x2="440" y2="486" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity="0.35"/>
 </svg>
-<figcaption><b>A cascata tem um salto a mais, e é esse salto que medimos.</b> As duas vias da direita recebem o mesmo item com as alternativas na mesma ordem — sem isso, a diferença entre as duas acurácias misturaria o efeito da via com o efeito da posição da alternativa correta.</figcaption>
+<figcaption>As duas vias comparadas recebem o mesmo item com as alternativas na mesma ordem. Sem isso, a diferença entre as acurácias misturaria o efeito da via com o efeito da posição da alternativa correta.</figcaption>
 </figure>
 </div>
+</section>
 
-<main class="wrap">
-  <h2>2. O código</h2>
-  <p>Congelei primeiro as estruturas de dados e os protocolos; os quatro blocos foram construídos em cima disso, sem dependência entre si.</p>
-</main>
+<section>
+<div class="wrap">
+  <h2><span class="num">2</span> O código</h2>
+  <p>Os quatro blocos do topo não dependem uns dos outros: cada um fala apenas com a camada de contratos, que fixa as estruturas de dados, os protocolos de modelo e o formato da configuração. Foi ela que permitiu escrever os quatro em paralelo.</p>
+  <p>Abaixo dela está a fronteira de protocolos, por onde todo provedor entra. Hoje quem a atende são implementações falsas determinísticas, e é isso que faz os 320 testes rodarem sem rede e sem credencial. Os adaptadores reais existem como stubs, com o contrato documentado.</p>
+  <p>Faltam os dois scripts de linha de comando das etapas 5 e 6, marcados no desenho.</p>
+</div>
 
 <div class="wide">
 <figure>
@@ -292,7 +247,6 @@
     </marker>
   </defs>
 
-  <!-- quatro blocos -->
   <rect x="30" y="36" width="166" height="140" rx="5" class="d-box"/>
   <rect x="30" y="36" width="166" height="28" rx="5" class="d-sunk"/>
   <text x="113" y="55" class="d-t" text-anchor="middle">Janelas e áudio</text>
@@ -329,14 +283,12 @@
   <text x="836" y="146" class="d-t f-ok" text-anchor="end">108 testes</text>
   <text x="836" y="164" class="d-m f-pend" text-anchor="end">falta o script 07</text>
 
-  <!-- dependência -->
   <line x1="113" y1="176" x2="113" y2="226" class="d-line" marker-end="url(#c-ar)"/>
   <line x1="331" y1="176" x2="331" y2="226" class="d-line" marker-end="url(#c-ar)"/>
   <line x1="549" y1="176" x2="549" y2="226" class="d-line" marker-end="url(#c-ar)"/>
   <line x1="767" y1="176" x2="767" y2="226" class="d-line" marker-end="url(#c-ar)"/>
   <text x="440" y="206" class="d-m" text-anchor="middle">dependem só de</text>
 
-  <!-- camada de contratos -->
   <rect x="30" y="228" width="820" height="88" rx="5" class="d-box s-acc" stroke-width="1.7"/>
   <text x="440" y="252" class="d-t f-acc" text-anchor="middle">Contratos — congelados antes de tudo</text>
   <rect x="48" y="264" width="250" height="40" rx="3" class="d-sunk"/>
@@ -349,7 +301,6 @@
   <text x="707" y="281" class="d-s" text-anchor="middle">configuração</text>
   <text x="707" y="296" class="d-m" text-anchor="middle">as decisões em aberto</text>
 
-  <!-- fronteira de protocolo -->
   <line x1="440" y1="316" x2="440" y2="356" class="d-line" marker-end="url(#c-ar)"/>
   <text x="452" y="341" class="d-m">todo provedor entra por aqui</text>
 
@@ -365,23 +316,7 @@
 
   <text x="440" y="482" class="d-s" text-anchor="middle">Trocar de provedor é escrever mais um adaptador — não mexe no runner nem na análise.</text>
 </svg>
-<figcaption><b>A fronteira de protocolos é o que torna o trabalho verificável agora.</b> Sem nenhuma credencial no projeto, os quatro blocos rodam ponta a ponta com implementações falsas determinísticas. Os adaptadores reais ficam como stubs com o contrato escrito: código que não se pode executar não se pode verificar.</figcaption>
+<figcaption>Sem nenhuma credencial no projeto, os quatro blocos rodam ponta a ponta com implementações falsas determinísticas. Os adaptadores reais ficam como stubs com o contrato escrito.</figcaption>
 </figure>
 </div>
-
-<main class="wrap">
-  <h2>3. O que preciso fechar com o senhor</h2>
-
-  <ul class="asks">
-    <li><b>O teto da tarefa.</b> A decomposição precisa de um teto: a perda na compreensão é <code>teto − acc(ref)</code>. Assumir 100% por construção é defensável, já que os itens foram revisados sobre a própria transcrição, mas mede a distância até a perfeição, não até o humano. A alternativa é medir acurácia humana numa amostra, ao custo de mais revisão. O código aceita as duas e registra na saída qual foi usada, porque as duas decomposições não são comparáveis entre si.</li>
-    <li><b>Gênero como covariável.</b> A cobertura de gênero no corpus é completa, ao contrário de escolaridade e categoria racial, que têm “desconhecido” demais para servirem de controle. Entrar ou não no modelo é decisão metodológica, não técnica.</li>
-    <li><b>Contaminação do ASR.</b> Um Whisper ajustado para português pode ter sido treinado sobre o próprio CORAA. Preciso verificar o card de treino do checkpoint antes de rodar; deixei a execução completa bloqueada no código até isso estar respondido.</li>
-  </ul>
-
-  <p style="margin-top:1.75rem">O caminho crítico continua sendo a revisão humana dos itens. O piloto existe justamente para medir os minutos por item antes de assumirmos esse custo no conjunto completo.</p>
-
-  <div class="signoff">
-    <p>Obrigado,<span class="name">Lucas</span></p>
-    <p class="note">Os planos completos estão em <code>docs/plano_implementacao.md</code> e <code>docs/plano_codigo.md</code>, no repositório.</p>
-  </div>
-</main>
+</section>

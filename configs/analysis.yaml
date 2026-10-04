@@ -3,12 +3,12 @@
 # Estimativas restritas a 20-69 anos (principal.tex, secao Metricas).
 age_range: [20, 69]
 
-# D6 - covariaveis do modelo `acerto ~ ...`. O texto mostra cobertura completa
-# de genero mas NAO o inclui no modelo. Decisao pendente com o orientador; se
-# genero entrar, acrescentar `speaker_gender` aqui E na secao de Metricas do
-# texto. Escolaridade e categoria racial NAO sao usaveis: a cobertura de
-# 'unknown' e alta demais (ver painel de confundidores da Etapa 0).
-covariates: [region, age]
+# D6 - covariaveis do modelo `acerto ~ ...`. FECHADA em 2026-10-02 com o
+# orientador: genero ENTRA no modelo. A cobertura de genero no corpus e
+# completa, ao contrario de escolaridade e categoria racial, cuja cobertura de
+# 'unknown' e alta demais para servirem de controle (ver painel de
+# confundidores da Etapa 0). Acrescentar tambem na secao de Metricas do texto.
+covariates: [region, age, speaker_gender]
 
 # D7 - referencia e normalizacao do WER. A MESMA normalizacao e aplicada a
 # referencia e a hipotese; aplica-la so a um dos lados inventaria erros.

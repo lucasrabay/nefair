@@ -21,7 +21,29 @@ windows:
 
   # Lacuna maxima tolerada entre end_time[i] e start_time[i+1] para que dois
   # segmentos ainda contem como contiguos. Acima disso a janela fecha.
-  gap_tolerance_s: 0.5
+  #
+  # FIXADO EM 2.0 s COM EVIDENCIA (2026-10-03). O texto do TCC diz "fala
+  # continua" sem quantificar, entao este valor e uma decisao metodologica
+  # nossa e precisa ser declarado na Metodologia.
+  #
+  # Distribuicao real das pausas entre segmentos consecutivos do informante
+  # (168.831 lacunas medidas): p50 = 0,10 s | p75 = 1,02 s | p90 = 2,62 s.
+  # O valor anterior (0,5 s) cobria so 59,6% das pausas e picava a fala em
+  # corridas de ~2,5 segmentos, abaixo do minimo de 8 para fechar janela:
+  # produzia 329 janelas contra as 1.602 obtidas a 2,0 s.
+  #
+  # Varredura (janelas | NE | SE | falantes com as 10):
+  #   0,5 s ->   329 |  62 |  267 |  12
+  #   1,0 s -> 1.398 | 262 | 1136 | 119
+  #   2,0 s -> 1.602 | 307 | 1295 | 157   <- joelho da curva
+  #   3,0 s -> 1.609 | 312 | 1297 | 158
+  #  10,0 s -> 1.626 | 321 | 1305 | 160
+  #
+  # A curva satura em ~2 s: de 2 s a 10 s ganham-se 24 janelas (1,5%) ao custo
+  # de "fala continua" passar a admitir pausa de dez segundos. A 2,0 s cobrimos
+  # 87,4% das pausas observadas e 97% do teto teorico de janelas.
+  # Dados completos em outputs/gap_tolerance_sweep.csv.
+  gap_tolerance_s: 2.0
 
   # D1 - turno do entrevistador no meio da janela.
   #   close_window : um turno P/* entre dois segmentos R FECHA a janela.

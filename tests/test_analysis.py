@@ -92,6 +92,21 @@ def _expit(z: np.ndarray | float) -> np.ndarray | float:
     return 1.0 / (1.0 + np.exp(-np.asarray(z, dtype=float)))
 
 
+def speaker_gender_of(speaker_code: str) -> str:
+    """Gênero do falante, derivado do código de forma estável (D6).
+
+    Precisa ser atributo do FALANTE — constante em todas as linhas dele — e
+    precisa VARIAR DENTRO de cada região. Se todo falante do NE fosse `F` e todo
+    do SE fosse `M`, a coluna de gênero seria colinear com a de região, a matriz
+    de desenho ficaria deficiente de posto e `fit_logit` devolveria `None` em
+    toda reamostra: o teste falharia por álgebra linear, não pelo estimador.
+
+    Alternar pela paridade do índice no código garante as duas coisas.
+    """
+    digits = "".join(c for c in speaker_code if c.isdigit())
+    return "F" if (int(digits or 0) % 2 == 0) else "M"
+
+
 def _trial_rows(
     speaker_code: str,
     region: str,
@@ -110,6 +125,7 @@ def _trial_rows(
             "condition": condition,
             "region": region,
             "age": age,
+            "speaker_gender": speaker_gender_of(speaker_code),
             "is_correct": bool(value),
             **extra,
         }
@@ -229,6 +245,7 @@ def cascade_frame() -> pd.DataFrame:
                             "condition": condition,
                             "region": region,
                             "age": age,
+                            "speaker_gender": speaker_gender_of(code),
                             "is_correct": bool(rng.random() < rate),
                         }
                     )
@@ -306,7 +323,10 @@ def test_estimate_gap_reports_the_sample_it_used(planted_gap_frame, config):
     assert (estimate.age_min, estimate.age_max) == (20, 69)
     row = estimate.to_row()
     assert row["gap_ne_se"] == estimate.estimate
-    assert row["covariates"] == "region+age"
+    # Derivado da config, nao fixado na mao: o ponto da asercao e que `to_row`
+    # serializa as covariaveis efetivamente usadas (D6 mudou a lista em
+    # 2026-10-02, quando genero entrou), nao que a lista seja uma em particular.
+    assert row["covariates"] == "+".join(config.covariates)
 
 
 def test_average_marginal_effect_is_exact_when_the_design_is_homogeneous():

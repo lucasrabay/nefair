@@ -51,7 +51,7 @@ AUDIO_COLUMN = "audio"
 # Concorrência da fase de indexação (footer + coluna `file_path` por shard).
 # Mesma ordem de grandeza da Etapa 0, pelas mesmas razões (pool httpx de 100
 # conexões e risco de 429 na HF).
-INDEX_WORKERS = 6
+INDEX_WORKERS = 3
 
 # Motivos de exclusão de janela (vocabulário fechado, aparece no manifesto).
 STATUS_OK = "ok"

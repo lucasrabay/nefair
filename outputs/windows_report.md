@@ -2,7 +2,7 @@
 
 Artefato reprodutível e determinístico. Nenhum byte de áudio foi lido: as janelas são decididas inteiramente sobre metadados.
 
-- **Gerado em (UTC):** 2026-10-04T14:50:03+00:00
+- **Gerado em (UTC):** 2026-10-04T15:04:33+00:00
 
 ## Proveniência e reprodutibilidade
 - Dataset: `nilc-nlp/CORAA-MUPE-ASR`

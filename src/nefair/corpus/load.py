@@ -50,9 +50,9 @@ _COALESCE_GAP = 64 * 1024
 _FOOTER_PROBE = 256 * 1024
 _REQUEST_TIMEOUT = 60
 # Retry com backoff exponencial; respeita Retry-After em 429 (rate limit).
-_MAX_RETRIES = 6
+_MAX_RETRIES = 10
 _RETRY_BACKOFF = 0.5
-_RETRY_MAX_DELAY = 15.0
+_RETRY_MAX_DELAY = 60.0
 
 
 @dataclass(frozen=True)
@@ -140,7 +140,13 @@ class _RangeReader:
                 if attempt == _MAX_RETRIES - 1:
                     break
                 time.sleep(_retry_delay(exc, attempt))
-        raise RuntimeError(f"falha ao ler {self._url} ({range_header})") from last
+        status = getattr(getattr(last, "response", None), "status_code", None)
+        detail = f"{type(last).__name__}: {last}" if last else "sem exceção registrada"
+        raise RuntimeError(
+            f"falha ao ler {self._url} ({range_header}) após {_MAX_RETRIES} tentativas"
+            + (f" — HTTP {status}" if status else "")
+            + f" — {detail}"
+        ) from last
 
     def get(self, lo: int, hi: int) -> tuple[int, bytes]:
         """Lê [lo, hi) e devolve (lo, bytes). `hi` é exclusivo."""

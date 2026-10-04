@@ -105,10 +105,33 @@ def _text_for(speaker_code: str, index: int, n_words: int = 6) -> str:
     return " ".join(words)
 
 
-def _rows_for_speaker(plan: SpeakerPlan, audio_id_start: int) -> list[dict]:
-    """Linhas (segmentos) de um falante, em ordem temporal."""
+def _rows_for_speaker(plan: SpeakerPlan, audio_id_start: int) -> tuple[list[dict], int]:
+    """Linhas (segmentos) de um falante, em ordem temporal.
+
+    Devolve `(linhas, n_gravacoes)`.
+
+    **`audio_id` identifica a GRAVACAO, nao o segmento** — no corpus real um
+    unico `audio_id` cobre a entrevista inteira (mais de mil linhas). A versao
+    anterior desta fixture dava um `audio_id` incremental POR LINHA, o que
+    codificou uma suposicao errada e fez a suite inteira concordar com um bug:
+    a Etapa 2 casava segmentos por `audio_id` e teria baixado as entrevistas
+    completas (25,8 GB em vez de ~2 GB), concatenando audio errado.
+
+    Quem identifica o segmento e `file_path`, unico por linha, no formato real
+    `<split>/<gravacao>/<gravacao>_<i>_<inicio>_<fim>.wav`.
+    """
     rows: list[dict] = []
-    audio_id = audio_id_start
+    recording_ids: dict[str, int] = {}
+
+    def rec_id(name: str) -> int:
+        """Um id por gravacao, estavel na ordem de aparicao."""
+        if name not in recording_ids:
+            recording_ids[name] = audio_id_start + len(recording_ids)
+        return recording_ids[name]
+
+    def seg_path(name: str, index: int, start: float, end: float) -> str:
+        return f"{plan.split}/{name}/{name}_{index}_{start}_{end}.wav"
+
     clock = 0.0
     segments_per_audio = max(1, plan.n_segments // plan.n_audios)
 
@@ -132,9 +155,11 @@ def _rows_for_speaker(plan: SpeakerPlan, audio_id_start: int) -> list[dict]:
         if index in plan.interviewer_at:
             rows.append(
                 {
-                    "audio_id": audio_id,
+                    "audio_id": rec_id(audio_name),
                     "audio_name": audio_name,
-                    "file_path": f"data/{audio_name}/{audio_id}.wav",
+                    "file_path": seg_path(
+                        audio_name, index, clock, clock + SEGMENT_DURATION
+                    ),
                     "speaker_type": "P/1",
                     "speaker_code": f"{plan.speaker_code}_ENTREVISTADOR",
                     "speaker_gender": "M",
@@ -153,14 +178,13 @@ def _rows_for_speaker(plan: SpeakerPlan, audio_id_start: int) -> list[dict]:
                     "split": plan.split,
                 }
             )
-            audio_id += 1
             clock += SEGMENT_DURATION
 
         rows.append(
             {
-                "audio_id": audio_id,
+                "audio_id": rec_id(audio_name),
                 "audio_name": audio_name,
-                "file_path": f"data/{audio_name}/{audio_id}.wav",
+                "file_path": seg_path(audio_name, index, clock, clock + SEGMENT_DURATION),
                 "speaker_type": "R",
                 "speaker_code": plan.speaker_code,
                 "speaker_gender": plan.gender,
@@ -179,10 +203,9 @@ def _rows_for_speaker(plan: SpeakerPlan, audio_id_start: int) -> list[dict]:
                 "split": plan.split,
             }
         )
-        audio_id += 1
         clock += SEGMENT_DURATION
 
-    return rows
+    return rows, len(recording_ids)
 
 
 def synthetic_frame(plan: tuple[SpeakerPlan, ...] = DEFAULT_PLAN) -> pd.DataFrame:
@@ -195,9 +218,9 @@ def synthetic_frame(plan: tuple[SpeakerPlan, ...] = DEFAULT_PLAN) -> pd.DataFram
     rows: list[dict] = []
     audio_id = 1
     for speaker in plan:
-        speaker_rows = _rows_for_speaker(speaker, audio_id)
+        speaker_rows, n_recordings = _rows_for_speaker(speaker, audio_id)
         rows.extend(speaker_rows)
-        audio_id += len(speaker_rows)
+        audio_id += n_recordings
 
     frame = pd.DataFrame(rows)
     for column in ("start_time", "end_time", "duration"):

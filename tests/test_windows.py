@@ -71,21 +71,27 @@ def result_ignore(frame, config):
     return build_windows(frame, dataclasses.replace(config, interviewer_turn="ignore"))
 
 
-def _by_audio_id(frame: pd.DataFrame) -> dict[int, pd.Series]:
-    return {int(row.audio_id): row for row in frame.itertuples()}
+def _by_file_path(frame: pd.DataFrame) -> dict[str, pd.Series]:
+    """Indexa por `file_path` — a chave do SEGMENTO.
+
+    `audio_id` identifica a GRAVAÇÃO: um só valor cobre a entrevista inteira,
+    então indexar por ele colapsaria todos os segmentos de um falante numa
+    linha só e os testes passariam medindo nada.
+    """
+    return {str(row.file_path): row for row in frame.itertuples()}
 
 
 def _recording_positions(frame: pd.DataFrame) -> dict[int, int]:
-    """audio_id -> posição na ordem da GRAVAÇÃO (incluindo o entrevistador).
+    """file_path -> posição na ordem da GRAVAÇÃO (incluindo o entrevistador).
 
     É a referência independente para "contíguo": duas linhas do informante são
     vizinhas de verdade só se suas posições diferem de 1 — se um turno `P/*`
     estiver no meio, a diferença é 2 ou mais.
     """
     ordered = frame.sort_values(
-        ["audio_name", "start_time", "audio_id"], kind="stable"
+        ["audio_name", "start_time", "file_path"], kind="stable"
     ).reset_index(drop=True)
-    return {int(audio_id): position for position, audio_id in enumerate(ordered["audio_id"])}
+    return {str(path): position for position, path in enumerate(ordered["file_path"])}
 
 
 def _windows_of(result, speaker_code: str) -> list[Window]:
@@ -103,7 +109,7 @@ def test_windows_are_contiguous_in_the_recording(result, frame):
     """
     positions = _recording_positions(frame)
     for window in result.windows:
-        ordered = [positions[audio_id] for audio_id in window.segment_audio_ids]
+        ordered = [positions[path] for path in window.segment_file_paths]
         assert ordered == sorted(ordered), f"{window.window_id} fora de ordem temporal"
         assert ordered == list(range(ordered[0], ordered[0] + len(ordered))), (
             f"{window.window_id} tem uma linha estranha no meio"
@@ -114,16 +120,16 @@ def test_windows_never_overlap_within_speaker(result):
     seen: dict[str, set[int]] = {}
     for window in result.windows:
         used = seen.setdefault(window.speaker_code, set())
-        overlap = used & set(window.segment_audio_ids)
+        overlap = used & set(window.segment_file_paths)
         assert not overlap, f"{window.window_id} reusa os segmentos {sorted(overlap)}"
-        used.update(window.segment_audio_ids)
+        used.update(window.segment_file_paths)
 
 
 def test_gaps_inside_a_window_are_within_tolerance(result, frame, config):
     """Nenhuma janela contém um salto temporal acima da tolerância."""
-    rows = _by_audio_id(frame)
+    rows = _by_file_path(frame)
     for window in result.windows:
-        ids = window.segment_audio_ids
+        ids = window.segment_file_paths
         for previous, current in zip(ids[:-1], ids[1:], strict=True):
             gap = float(rows[current].start_time) - float(rows[previous].end_time)
             assert gap <= config.gap_tolerance_s + 1e-6, (
@@ -137,13 +143,13 @@ def test_duration_and_segment_count_are_both_within_bounds(result, config):
     for window in result.windows:
         assert config.min_duration_s <= window.duration_s <= config.max_duration_s
         assert config.min_segments <= window.n_segments <= config.max_segments
-        assert window.n_segments == len(window.segment_audio_ids)
+        assert window.n_segments == len(window.segment_file_paths)
 
 
 def test_window_fields_agree_with_the_source_rows(result, frame, config):
-    rows = _by_audio_id(frame)
+    rows = _by_file_path(frame)
     for window in result.windows:
-        segments = [rows[audio_id] for audio_id in window.segment_audio_ids]
+        segments = [rows[path] for path in window.segment_file_paths]
         assert {s.speaker_type for s in segments} == {"R"}
         assert {s.speaker_code for s in segments} == {window.speaker_code}
         assert {s.audio_name for s in segments} == {window.audio_name}
@@ -192,17 +198,17 @@ def test_ignore_does_not_break_on_interviewer_turn(result_ignore, frame, config)
 
     marked = mark_interviewer_turns(frame)
     interrupted_ids = set(
-        marked.loc[marked["interviewer_turns_before"] > 0, "audio_id"].astype(int)
+        marked.loc[marked["interviewer_turns_before"] > 0, "file_path"].astype(str)
     )
     positions = _recording_positions(frame)
     spanned = [
         window
         for window in _windows_of(result_ignore, "NE_INTERRUPTED")
-        if interrupted_ids & set(window.segment_audio_ids[1:])
+        if interrupted_ids & set(window.segment_file_paths[1:])
     ]
     assert spanned, "com `ignore`, alguma janela deve atravessar a interrupção"
     # E essa janela NÃO é contígua na gravação: o turno `P/*` ficou no meio.
-    ordered = [positions[a] for a in spanned[0].segment_audio_ids]
+    ordered = [positions[p] for p in spanned[0].segment_file_paths]
     assert ordered[-1] - ordered[0] > len(ordered) - 1
 
 
@@ -222,23 +228,23 @@ def test_twelve_second_gap_breaks_the_window(result, frame):
     assert result.breaks.by_reason[BREAK_GAP] == 1
 
     speaker = frame[(frame["speaker_code"] == "SE_GAP")].sort_values("start_time")
-    times = speaker[["audio_id", "start_time", "end_time"]].to_numpy()
+    times = speaker[["file_path", "start_time", "end_time"]].to_numpy()
     boundary = [
-        (int(times[i][0]), int(times[i + 1][0]))
+        (str(times[i][0]), str(times[i + 1][0]))
         for i in range(len(times) - 1)
         if times[i + 1][1] - times[i][2] > 1.0
     ]
     assert len(boundary) == 1, boundary
     before, after = boundary[0]
     for window in _windows_of(result, "SE_GAP"):
-        ids = set(window.segment_audio_ids)
+        ids = set(window.segment_file_paths)
         assert not (before in ids and after in ids), f"{window.window_id} cruzou a lacuna"
 
 
 def test_no_window_crosses_audio_name(result, frame):
-    rows = _by_audio_id(frame)
+    rows = _by_file_path(frame)
     for window in result.windows:
-        names = {rows[audio_id].audio_name for audio_id in window.segment_audio_ids}
+        names = {rows[path].audio_name for path in window.segment_file_paths}
         assert len(names) == 1, f"{window.window_id} cruza gravações: {names}"
     # A fixture tem exatamente uma troca de gravação (SE_MULTI_AUDIO, 2 áudios).
     assert result.breaks.by_reason[BREAK_AUDIO] == 1

@@ -52,7 +52,7 @@ _WINDOW_FIELDS: tuple[str, ...] = (
     "split",
     "region",
     "age",
-    "segment_audio_ids",
+    "segment_file_paths",
     "start_time",
     "end_time",
     "duration_s",
@@ -73,9 +73,9 @@ def _window_from_mapping(row: dict) -> Window:
             f"Janela sem os campos {missing}. O artefato de janelas não segue o "
             "contrato de `nefair.schema.Window` (Etapa 1)."
         )
-    ids = row["segment_audio_ids"]
-    if isinstance(ids, str):
-        ids = json.loads(ids)
+    paths = row["segment_file_paths"]
+    if isinstance(paths, str):
+        paths = json.loads(paths)
     return Window(
         window_id=str(row["window_id"]),
         speaker_code=str(row["speaker_code"]),
@@ -83,7 +83,7 @@ def _window_from_mapping(row: dict) -> Window:
         split=str(row["split"]),
         region=str(row["region"]),
         age=int(row["age"]),
-        segment_audio_ids=tuple(int(i) for i in ids),
+        segment_file_paths=tuple(str(p) for p in paths),
         start_time=float(row["start_time"]),
         end_time=float(row["end_time"]),
         duration_s=float(row["duration_s"]),
@@ -126,7 +126,9 @@ def demo_windows() -> tuple[Window, ...]:
                     split="train",
                     region=region,
                     age=age,
-                    segment_audio_ids=tuple(range(index * 10, index * 10 + 8)),
+                    segment_file_paths=tuple(
+                        f"demo/{index:02d}/seg_{k:02d}.wav" for k in range(8)
+                    ),
                     start_time=start,
                     end_time=start + 45.0,
                     duration_s=45.0,

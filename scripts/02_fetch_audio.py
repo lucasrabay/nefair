@@ -8,7 +8,7 @@ Uso:
 
 Baixa SOMENTE os chunks da coluna `audio` dos row groups que contêm segmentos
 das janelas selecionadas — nunca os 41,8 GB do dataset. `--dry-run` faz só a
-indexação (footers + coluna `audio_id`, poucos MB) e reporta o que baixaria;
+indexação (footers + coluna `file_path`, poucos MB) e reporta o que baixaria;
 `--limit` restringe às N primeiras janelas, para um teste barato de ponta a
 ponta antes de pagar a rede inteira.
 """

@@ -99,6 +99,11 @@ class Segment:
     a célula de áudio correspondente sem reler o dataset inteiro.
     """
 
+    # ATENCAO: `audio_id` identifica a GRAVACAO (a entrevista inteira), nao o
+    # segmento — um unico `audio_id` cobre mais de mil linhas. Quem identifica o
+    # segmento e `file_path`, unico por linha e ja codificando gravacao, indice,
+    # inicio e fim. Confundir os dois faz a Etapa 2 baixar entrevistas inteiras
+    # e concatenar audio errado (medido em 2026-10-04).
     audio_id: int
     audio_name: str
     file_path: str
@@ -122,7 +127,7 @@ class Segment:
 class Window:
     """Janela de fala contínua de um informante (30–60 s, 8–15 segmentos).
 
-    `segment_audio_ids` é a proveniência dura da janela: a Etapa 2 baixa
+    `segment_file_paths` é a proveniência dura da janela: a Etapa 2 baixa
     exatamente essas células de áudio, e o WER da Etapa 6 compara exatamente
     contra o texto que elas geraram.
 
@@ -137,7 +142,7 @@ class Window:
     split: str
     region: str
     age: int
-    segment_audio_ids: tuple[int, ...]
+    segment_file_paths: tuple[str, ...]
     start_time: float
     end_time: float
     duration_s: float
@@ -161,7 +166,7 @@ class Window:
         """Hash do conteúdo da janela, para detectar deriva entre etapas."""
         return short_hash(
             {
-                "segments": list(self.segment_audio_ids),
+                "segments": list(self.segment_file_paths),
                 "reference_text": self.reference_text,
             }
         )

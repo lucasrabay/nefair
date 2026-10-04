@@ -100,7 +100,9 @@ def make_window(speaker_code: str, index: int, *, region: str = "NE") -> Window:
         split="train",
         region=region,
         age=34,
-        segment_audio_ids=tuple(range(index * 10, index * 10 + 8)),
+        segment_file_paths=tuple(
+            f"train/{speaker_code}/{speaker_code}_{index:02d}_{k}.wav" for k in range(8)
+        ),
         start_time=float(index * 40),
         end_time=float(index * 40 + 40),
         duration_s=40.0,

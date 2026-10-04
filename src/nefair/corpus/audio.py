@@ -48,7 +48,7 @@ TARGET_SAMPLE_RATE = 16_000
 # real e `binary` puro na fixture sintética; `segment_bytes` trata os dois.
 AUDIO_COLUMN = "audio"
 
-# Concorrência da fase de indexação (footer + coluna `audio_id` por shard).
+# Concorrência da fase de indexação (footer + coluna `file_path` por shard).
 # Mesma ordem de grandeza da Etapa 0, pelas mesmas razões (pool httpx de 100
 # conexões e risco de 429 na HF).
 INDEX_WORKERS = 6
@@ -123,7 +123,7 @@ class ShardPlan:
     n_row_groups_total: int
     row_groups: tuple[int, ...]
     rows_by_group: Mapping[int, tuple[int, ...]]
-    audio_ids_by_group: Mapping[int, tuple[int, ...]]
+    file_paths_by_group: Mapping[int, tuple[str, ...]]
     audio_bytes_to_download: int
     audio_bytes_total: int
 
@@ -142,8 +142,8 @@ class ShardPlan:
 
 def plan_shard(
     metadata: pq.FileMetaData,
-    audio_ids: Sequence[int],
-    wanted: frozenset[int],
+    file_paths: Sequence[str],
+    wanted: frozenset[str],
     *,
     shard: str,
     split: str,
@@ -151,17 +151,17 @@ def plan_shard(
 ) -> ShardPlan:
     """Decide quais row groups deste shard precisam ser baixados.
 
-    `audio_ids` é a coluna `audio_id` do shard NA ORDEM DAS LINHAS — barata de ler
+    `file_paths` é a coluna `file_path` do shard NA ORDEM DAS LINHAS — barata de ler
     (alguns KB) e a única forma robusta de localizar um segmento: as estatísticas
-    de min/max do footer só serviriam se `audio_id` fosse monotônico por shard, o
+    de min/max do footer só serviriam se `file_path` fosse monotônico por shard, o
     que o dataset não promete.
     """
-    ids = np.asarray(audio_ids, dtype="int64")
-    hits = np.flatnonzero(np.isin(ids, np.fromiter(wanted, dtype="int64", count=len(wanted))))
+    ids = np.asarray(file_paths, dtype=object)
+    hits = np.flatnonzero(np.isin(ids, np.asarray(sorted(wanted), dtype=object)))
     bounds = row_group_bounds(metadata)
     rows_by_group = rows_to_row_groups(bounds, hits.tolist())
-    audio_ids_by_group = {
-        group: tuple(int(ids[row]) for row in rows) for group, rows in rows_by_group.items()
+    file_paths_by_group = {
+        group: tuple(str(ids[row]) for row in rows) for group, rows in rows_by_group.items()
     }
     groups = tuple(sorted(rows_by_group))
     _, to_download = column_chunk_ranges(metadata, audio_column, groups)
@@ -172,7 +172,7 @@ def plan_shard(
         n_row_groups_total=metadata.num_row_groups,
         row_groups=groups,
         rows_by_group=rows_by_group,
-        audio_ids_by_group=audio_ids_by_group,
+        file_paths_by_group=file_paths_by_group,
         audio_bytes_to_download=to_download,
         audio_bytes_total=total,
     )
@@ -183,7 +183,7 @@ class DownloadPlan:
     """Plano completo: um `ShardPlan` por shard tocado, mais os totais."""
 
     shards: tuple[ShardPlan, ...]
-    missing_audio_ids: tuple[int, ...]
+    missing_file_paths: tuple[str, ...]
 
     @property
     def bytes_to_download(self) -> int:
@@ -234,23 +234,23 @@ class DownloadPlan:
         )
 
 
-def build_plan(shard_plans: Sequence[ShardPlan], wanted: frozenset[int]) -> DownloadPlan:
+def build_plan(shard_plans: Sequence[ShardPlan], wanted: frozenset[str]) -> DownloadPlan:
     """Junta os planos por shard e apura o que NÃO foi encontrado em lugar nenhum.
 
-    Um `audio_id` de janela que não aparece em nenhum shard é um erro de
+    Um segmento de janela que não aparece em nenhum shard é um erro de
     contrato entre as Etapas 1 e 2 (revisão do dataset diferente, por exemplo).
     Ele é DEVOLVIDO, nunca ignorado: quem chama decide falhar ou contabilizar.
     """
     found: set[int] = set()
     for plan in shard_plans:
-        for ids in plan.audio_ids_by_group.values():
+        for ids in plan.file_paths_by_group.values():
             found.update(ids)
-    return DownloadPlan(shards=tuple(shard_plans), missing_audio_ids=tuple(sorted(wanted - found)))
+    return DownloadPlan(shards=tuple(shard_plans), missing_file_paths=tuple(sorted(wanted - found)))
 
 
-def required_audio_ids(windows: Sequence[Window]) -> frozenset[int]:
-    """Conjunto de `audio_id` que a Etapa 2 precisa materializar."""
-    return frozenset(audio_id for window in windows for audio_id in window.segment_audio_ids)
+def required_file_paths(windows: Sequence[Window]) -> frozenset[str]:
+    """Conjunto de `file_path` (chave do SEGMENTO) que a Etapa 2 materializa."""
+    return frozenset(path for window in windows for path in window.segment_file_paths)
 
 
 # =========================================================================== #
@@ -357,7 +357,7 @@ MANIFEST_COLUMNS: tuple[str, ...] = (
     "split",
     "audio_name",
     "n_segments",
-    "segment_audio_ids",
+    "segment_file_paths",
     "duration_requested_s",
     "duration_obtained_s",
     "duration_delta_s",
@@ -428,7 +428,7 @@ def build_manifest(
                 "split": window.split,
                 "audio_name": window.audio_name,
                 "n_segments": window.n_segments,
-                "segment_audio_ids": ";".join(str(a) for a in window.segment_audio_ids),
+                "segment_file_paths": ";".join(window.segment_file_paths),
                 "duration_requested_s": round(window.duration_s, 4),
                 "duration_obtained_s": round(obtained, 4),
                 "duration_delta_s": round(obtained - window.duration_s, 4),
@@ -512,39 +512,45 @@ def open_shard(url: str, headers: dict[str, str], rel_path: str, split: str) -> 
     )
 
 
-def read_shard_audio_ids(handle: ShardHandle) -> np.ndarray:
-    """Lê a coluna `audio_id` inteira do shard (alguns KB) — o índice do plano."""
-    ranges, _ = column_chunk_ranges(handle.metadata, "audio_id", None)
+def read_shard_file_paths(handle: ShardHandle) -> np.ndarray:
+    """Lê a coluna `file_path` inteira do shard (alguns KB) — o índice do plano.
+
+    `file_path` e não `audio_id`: só ele identifica o SEGMENTO. Um `audio_id`
+    cobre a entrevista inteira, e casar por ele baixaria a gravação toda.
+    """
+    ranges, _ = column_chunk_ranges(handle.metadata, "file_path", None)
     sparse = handle.fresh_sparse()
     for offset, data in handle.reader.get_many(coalesce_ranges(ranges, COALESCE_GAP)):
         sparse.add(offset, data)
-    table = pq.ParquetFile(sparse).read(columns=["audio_id"])
-    return table.column("audio_id").to_numpy().astype("int64")
+    table = pq.ParquetFile(sparse).read(columns=["file_path"])
+    return np.asarray(table.column("file_path").to_pylist(), dtype=object)
 
 
 def fetch_row_group_cells(
-    handle: ShardHandle, row_group: int, wanted: frozenset[int]
-) -> dict[int, bytes]:
-    """Baixa os chunks de `audio` de UM row group e devolve {audio_id: bytes}.
+    handle: ShardHandle, row_group: int, wanted: frozenset[str]
+) -> dict[str, bytes]:
+    """Baixa os chunks de `audio` de UM row group e devolve {file_path: bytes}.
 
-    `audio_id` é lido junto (custa alguns bytes) para casar célula com segmento
+    `file_path` é lido junto (custa alguns bytes) para casar célula com segmento
     sem aritmética de deslocamento entre row groups — que é onde erros desse tipo
     de código costumam se esconder.
     """
     audio_ranges, _ = column_chunk_ranges(handle.metadata, AUDIO_COLUMN, [row_group])
-    id_ranges, _ = column_chunk_ranges(handle.metadata, "audio_id", [row_group])
+    id_ranges, _ = column_chunk_ranges(handle.metadata, "file_path", [row_group])
     sparse = handle.fresh_sparse()
     for offset, data in handle.reader.get_many(
         coalesce_ranges(audio_ranges + id_ranges, COALESCE_GAP)
     ):
         sparse.add(offset, data)
-    table = pq.ParquetFile(sparse).read_row_groups([row_group], columns=[AUDIO_COLUMN, "audio_id"])
-    ids = table.column("audio_id").to_pylist()
+    table = pq.ParquetFile(sparse).read_row_groups(
+        [row_group], columns=[AUDIO_COLUMN, "file_path"]
+    )
+    ids = table.column("file_path").to_pylist()
     cells = table.column(AUDIO_COLUMN).to_pylist()
     return {
-        int(audio_id): segment_bytes(cell)
-        for audio_id, cell in zip(ids, cells, strict=True)
-        if int(audio_id) in wanted
+        str(path): segment_bytes(cell)
+        for path, cell in zip(ids, cells, strict=True)
+        if str(path) in wanted
     }
 
 
@@ -553,9 +559,9 @@ def index_shards(
     revision: str,
     split_files: Mapping[str, Sequence[str]],
     headers: dict[str, str],
-    wanted: frozenset[int],
+    wanted: frozenset[str],
 ) -> tuple[list[ShardHandle], list[ShardPlan]]:
-    """Abre todos os shards, lê `audio_id` e monta um `ShardPlan` por shard.
+    """Abre todos os shards, lê `file_path` e monta um `ShardPlan` por shard.
 
     Os shards são lidos em paralelo mas remontados na ordem estável de `tasks`:
     o plano não depende da ordem de conclusão das requisições.
@@ -568,8 +574,8 @@ def index_shards(
         split, rel_path = task
         url = hf_hub_url(dataset_id, rel_path, repo_type="dataset", revision=revision)
         handle = open_shard(url, headers, rel_path, split)
-        audio_ids = read_shard_audio_ids(handle)
-        plan = plan_shard(handle.metadata, audio_ids, wanted, shard=rel_path, split=split)
+        file_paths = read_shard_file_paths(handle)
+        plan = plan_shard(handle.metadata, file_paths, wanted, shard=rel_path, split=split)
         return handle, plan
 
     with ThreadPoolExecutor(max_workers=INDEX_WORKERS) as pool:
@@ -589,14 +595,14 @@ def materialize_windows(
     """
     results: list[WindowAudio] = []
     for window in windows:
-        missing = [a for a in window.segment_audio_ids if a not in cells]
+        missing = [p for p in window.segment_file_paths if p not in cells]
         if missing:
             results.append(WindowAudio(window=window, status=STATUS_MISSING_SEGMENT))
             continue
         try:
             pieces = []
-            for audio_id in window.segment_audio_ids:
-                samples, sample_rate = decode_segment(cells[audio_id])
+            for path in window.segment_file_paths:
+                samples, sample_rate = decode_segment(cells[path])
                 pieces.append(resample(samples, sample_rate))
             concatenated = concatenate_segments(pieces)
         except Exception as exc:  # noqa: BLE001 - qualquer falha de codec vira status
@@ -631,7 +637,7 @@ def run_fetch_audio(
 ) -> DownloadPlan:
     """Executa a Etapa 2 sobre as janelas dadas e escreve WAVs + manifesto.
 
-    Com `dry_run`, só a fase de indexação acontece (footers + coluna `audio_id`,
+    Com `dry_run`, só a fase de indexação acontece (footers + coluna `file_path`,
     poucos MB no total): o plano é reportado e nenhum byte de áudio é buscado.
     """
     from huggingface_hub import HfApi
@@ -648,7 +654,7 @@ def run_fetch_audio(
     splits = tuple(sorted({window.split for window in windows}))
     split_files = list_split_files(api, config_base_id, resolved, splits)
 
-    wanted = required_audio_ids(windows)
+    wanted = required_file_paths(windows)
     handles, shard_plans = index_shards(config_base_id, resolved, split_files, headers, wanted)
     plan = build_plan(shard_plans, wanted)
 
@@ -662,10 +668,10 @@ def run_fetch_audio(
         f"Bytes de áudio a baixar: {plan.bytes_to_download / 1e9:.3f} GB | "
         f"evitados: {plan.bytes_avoided / 1e9:.3f} GB"
     )
-    if plan.missing_audio_ids:
+    if plan.missing_file_paths:
         print(
-            f"! {len(plan.missing_audio_ids)} audio_id de janela NÃO encontrados nesta "
-            f"revisão (ex.: {list(plan.missing_audio_ids[:5])})"
+            f"! {len(plan.missing_file_paths)} segmento(s) de janela NÃO encontrados nesta "
+            f"revisão (ex.: {list(plan.missing_file_paths[:5])})"
         )
 
     plan.to_frame().to_csv(out / "audio_download_plan.csv", index=False)

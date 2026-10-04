@@ -15,7 +15,7 @@ Três escolhas de método valem ser ditas:
 2. O teste central (`test_two_windows_touch_one_row_group_...`) mede a economia
    com números concretos. Se um dia ele passar a baixar metade do arquivo para
    16 segmentos, a estratégia inteira deixou de se pagar e o teste cai.
-3. A metade de I/O de rede (`open_shard`, `read_shard_audio_ids`,
+3. A metade de I/O de rede (`open_shard`, `read_shard_file_paths`,
    `fetch_row_group_cells`, `index_shards`, `run_fetch_audio`) fica de fora: ela
    só exercita `RangeReader`/`SparseFile`, já cobertos pela Etapa 0, e exigiria
    rede e `HF_TOKEN`. O que sobra dela está registrado num teste com `skip`
@@ -52,7 +52,7 @@ from nefair.corpus.audio import (
     manifest_ledger,
     materialize_windows,
     plan_shard,
-    required_audio_ids,
+    required_file_paths,
     resample,
     row_group_bounds,
     rows_to_row_groups,
@@ -105,24 +105,29 @@ def metadata(frame, tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def audio_ids(frame) -> np.ndarray:
-    """Coluna `audio_id` NA ORDEM DAS LINHAS, como `plan_shard` a espera."""
-    return frame["audio_id"].to_numpy().astype("int64")
+def file_paths(frame) -> np.ndarray:
+    """Coluna `file_path` NA ORDEM DAS LINHAS, como `plan_shard` a espera.
+
+    `file_path` e nao `audio_id`: so ele identifica o SEGMENTO. Um `audio_id`
+    cobre a gravacao inteira, e casar por ele faria o plano baixar entrevistas
+    completas em vez das janelas.
+    """
+    return np.asarray(frame["file_path"].tolist(), dtype=object)
 
 
 @pytest.fixture(scope="module")
-def row_of_audio_id(frame) -> dict[int, int]:
-    """audio_id -> posição da linha no parquet. A referência independente."""
-    return {int(audio_id): row for row, audio_id in enumerate(frame["audio_id"])}
+def row_of_path(frame) -> dict[str, int]:
+    """file_path -> posição da linha no parquet. A referência independente."""
+    return {str(path): row for row, path in enumerate(frame["file_path"])}
 
 
-def _expected_groups(row_of_audio_id, wanted) -> tuple[int, ...]:
+def _expected_groups(row_of_path, wanted) -> tuple[int, ...]:
     """Row groups esperados, calculados sem olhar para `audio.py`.
 
     Como o parquet é escrito com row groups de tamanho fixo, a linha `r` mora no
     grupo `r // ROW_GROUP_SIZE` — divisão inteira, e nada mais.
     """
-    return tuple(sorted({row_of_audio_id[a] // ROW_GROUP_SIZE for a in wanted}))
+    return tuple(sorted({row_of_path[a] // ROW_GROUP_SIZE for a in wanted}))
 
 
 def _wav_bytes(seconds: float, sample_rate: int = TARGET_SAMPLE_RATE, value: float = 0.25) -> bytes:
@@ -133,18 +138,18 @@ def _wav_bytes(seconds: float, sample_rate: int = TARGET_SAMPLE_RATE, value: flo
     return buffer.getvalue()
 
 
-def _cells_for(windows, frame) -> dict[int, bytes]:
+def _cells_for(windows, frame) -> dict[str, bytes]:
     """Células de áudio com a duração EXATA que os metadados declaram.
 
     Fazer o áudio bater com o metadado é o que permite afirmar, no manifesto, que
     `duration_delta_s` é zero quando nada deu errado — e portanto que um delta
     diferente de zero significa divergência real, não ruído do teste.
     """
-    durations = {int(row.audio_id): float(row.duration) for row in frame.itertuples()}
+    durations = {str(row.file_path): float(row.duration) for row in frame.itertuples()}
     return {
-        audio_id: _wav_bytes(durations[audio_id])
+        path: _wav_bytes(durations[path])
         for window in windows
-        for audio_id in window.segment_audio_ids
+        for path in window.segment_file_paths
     }
 
 
@@ -209,7 +214,7 @@ def test_rows_to_row_groups_returns_sorted_rows_and_sorted_groups(metadata):
 # O coração da Etapa 2 — economia de bytes
 # --------------------------------------------------------------------------- #
 def test_two_windows_touch_one_row_group_and_avoid_almost_every_byte(
-    metadata, audio_ids, windows, row_of_audio_id
+    metadata, file_paths, windows, row_of_path
 ):
     """Poucos segmentos ⇒ poucos row groups ⇒ quase nenhum byte baixado.
 
@@ -219,12 +224,12 @@ def test_two_windows_touch_one_row_group_and_avoid_almost_every_byte(
     alguns GB. Se esta desigualdade cair, a estratégia de row groups deixou de se
     pagar e alguém precisa saber disso antes de gastar a banda.
     """
-    wanted = required_audio_ids(windows[:2])
+    wanted = required_file_paths(windows[:2])
     assert len(wanted) == 16, "duas janelas de 8 segmentos, sem sobreposição"
 
-    plan = plan_shard(metadata, audio_ids, wanted, shard="shard-00000.parquet", split="train")
+    plan = plan_shard(metadata, file_paths, wanted, shard="shard-00000.parquet", split="train")
 
-    assert plan.row_groups == _expected_groups(row_of_audio_id, wanted)
+    assert plan.row_groups == _expected_groups(row_of_path, wanted)
     assert len(plan.row_groups) == 1
     assert plan.n_row_groups_total == N_ROW_GROUPS
     assert plan.n_rows_targeted == 16
@@ -240,40 +245,40 @@ def test_two_windows_touch_one_row_group_and_avoid_almost_every_byte(
 
 
 def test_each_window_lands_in_the_row_group_that_holds_its_rows(
-    metadata, audio_ids, windows, row_of_audio_id
+    metadata, file_paths, windows, row_of_path
 ):
     """O mapa `audio_id -> row group` do plano bate linha a linha com o arquivo."""
-    wanted = required_audio_ids(windows[:12])
-    plan = plan_shard(metadata, audio_ids, wanted, shard="s", split="train")
+    wanted = required_file_paths(windows[:12])
+    plan = plan_shard(metadata, file_paths, wanted, shard="s", split="train")
 
     seen: set[int] = set()
-    for group, ids_in_group in plan.audio_ids_by_group.items():
+    for group, ids_in_group in plan.file_paths_by_group.items():
         for audio_id in ids_in_group:
-            assert row_of_audio_id[audio_id] // ROW_GROUP_SIZE == group
+            assert row_of_path[audio_id] // ROW_GROUP_SIZE == group
             seen.add(audio_id)
-        # E as linhas registradas para o grupo são as linhas desses `audio_id`.
-        assert plan.rows_by_group[group] == tuple(sorted(row_of_audio_id[a] for a in ids_in_group))
+        # E as linhas registradas para o grupo são as linhas desses `file_path`.
+        assert plan.rows_by_group[group] == tuple(sorted(row_of_path[a] for a in ids_in_group))
     assert seen == set(wanted)
 
 
-def test_asking_for_every_audio_id_downloads_the_whole_column(metadata, audio_ids):
+def test_asking_for_every_segment_downloads_the_whole_column(metadata, file_paths):
     """O extremo oposto: pedir tudo não pode "economizar" nada.
 
     Um `audio_bytes_avoided` positivo aqui significaria que algum row group ficou
     de fora do plano — ou seja, segmento faltando no WAV final.
     """
-    wanted = frozenset(int(a) for a in audio_ids)
-    plan = plan_shard(metadata, audio_ids, wanted, shard="s", split="train")
+    wanted = frozenset(str(p) for p in file_paths)
+    plan = plan_shard(metadata, file_paths, wanted, shard="s", split="train")
 
     assert plan.row_groups == tuple(range(metadata.num_row_groups))
-    assert plan.n_rows_targeted == metadata.num_rows == len(audio_ids)
+    assert plan.n_rows_targeted == metadata.num_rows == len(file_paths)
     assert plan.audio_bytes_to_download == plan.audio_bytes_total
     assert plan.audio_bytes_avoided == 0
 
 
-def test_asking_for_nothing_plans_nothing(metadata, audio_ids):
+def test_asking_for_nothing_plans_nothing(metadata, file_paths):
     """Shard sem nenhum segmento de interesse: nenhum row group, zero bytes."""
-    plan = plan_shard(metadata, audio_ids, frozenset(), shard="s", split="train")
+    plan = plan_shard(metadata, file_paths, frozenset(), shard="s", split="train")
     assert plan.is_empty
     assert plan.row_groups == ()
     assert plan.rows_by_group == {}
@@ -355,37 +360,37 @@ def test_column_chunk_ranges_does_not_confuse_audio_with_audio_id(metadata):
 # --------------------------------------------------------------------------- #
 # Plano completo
 # --------------------------------------------------------------------------- #
-def test_build_plan_reports_missing_audio_ids_instead_of_failing(metadata, audio_ids, windows):
-    """Um `audio_id` inexistente é DEVOLVIDO, não levanta exceção nem some.
+def test_build_plan_reports_missing_segments_instead_of_failing(metadata, file_paths, windows):
+    """Um `file_path` inexistente é DEVOLVIDO, não levanta exceção nem some.
 
     Um segmento pedido pela Etapa 1 e ausente na revisão baixada é quebra de
     contrato entre etapas. A decisão (falhar? contabilizar?) é de quem chama, e
     só existe decisão se o fato chegar até lá.
     """
-    real = required_audio_ids(windows[:3])
-    ghost = 10**9  # nenhum audio_id da fixture chega perto disso
-    assert ghost not in set(int(a) for a in audio_ids)
+    real = required_file_paths(windows[:3])
+    ghost = "train/NAO_EXISTE/NAO_EXISTE_0_0.0_1.0.wav"
+    assert ghost not in set(str(p) for p in file_paths)
     wanted = real | {ghost}
 
-    shard_plan = plan_shard(metadata, audio_ids, wanted, shard="s", split="train")
+    shard_plan = plan_shard(metadata, file_paths, wanted, shard="s", split="train")
     plan = build_plan([shard_plan], wanted)
 
-    assert plan.missing_audio_ids == (ghost,)
+    assert plan.missing_file_paths == (ghost,)
     assert shard_plan.n_rows_targeted == len(real), "o fantasma não vira linha"
     # E os ids encontrados continuam todos no plano.
-    found = {a for ids in shard_plan.audio_ids_by_group.values() for a in ids}
+    found = {a for ids in shard_plan.file_paths_by_group.values() for a in ids}
     assert found == set(real)
 
 
-def test_build_plan_adds_up_the_shards_and_ignores_the_empty_ones(metadata, audio_ids, windows):
+def test_build_plan_adds_up_the_shards_and_ignores_the_empty_ones(metadata, file_paths, windows):
     """Totais do plano = soma dos shards; `non_empty` filtra quem não será tocado."""
-    wanted = required_audio_ids(windows[:2])
-    touched = plan_shard(metadata, audio_ids, wanted, shard="shard-0.parquet", split="train")
-    untouched = plan_shard(metadata, audio_ids, frozenset(), shard="shard-1.parquet", split="test")
+    wanted = required_file_paths(windows[:2])
+    touched = plan_shard(metadata, file_paths, wanted, shard="shard-0.parquet", split="train")
+    untouched = plan_shard(metadata, file_paths, frozenset(), shard="shard-1.parquet", split="test")
 
     plan = build_plan([touched, untouched], wanted)
 
-    assert plan.missing_audio_ids == ()
+    assert plan.missing_file_paths == ()
     assert plan.non_empty == (touched,)
     assert plan.n_row_groups == len(touched.row_groups) == 1
     assert plan.n_row_groups_total == 2 * N_ROW_GROUPS
@@ -395,13 +400,13 @@ def test_build_plan_adds_up_the_shards_and_ignores_the_empty_ones(metadata, audi
 
 
 def test_download_plan_frame_lists_only_the_shards_that_will_be_touched(
-    metadata, audio_ids, windows
+    metadata, file_paths, windows
 ):
     """O CSV do plano é o que se confere antes de gastar banda: uma linha por
     shard que será de fato baixado, com os bytes VERDADEIROS daquele shard."""
-    wanted = required_audio_ids(windows[:2])
-    touched = plan_shard(metadata, audio_ids, wanted, shard="shard-0.parquet", split="train")
-    untouched = plan_shard(metadata, audio_ids, frozenset(), shard="shard-1.parquet", split="test")
+    wanted = required_file_paths(windows[:2])
+    touched = plan_shard(metadata, file_paths, wanted, shard="shard-0.parquet", split="train")
+    untouched = plan_shard(metadata, file_paths, frozenset(), shard="shard-1.parquet", split="test")
     frame = build_plan([touched, untouched], wanted).to_frame()
 
     assert list(frame.columns) == [
@@ -423,19 +428,19 @@ def test_download_plan_frame_lists_only_the_shards_that_will_be_touched(
     assert row["audio_bytes_to_download"] == touched.audio_bytes_to_download
 
     # Plano vazio ainda produz um frame com as colunas certas (CSV com cabeçalho).
-    empty = DownloadPlan(shards=(), missing_audio_ids=()).to_frame()
+    empty = DownloadPlan(shards=(), missing_file_paths=()).to_frame()
     assert list(empty.columns) == list(frame.columns)
     assert empty.empty
 
 
 def test_required_audio_ids_is_the_union_of_the_window_segments(windows):
     """Nem um segmento a mais (banda desperdiçada), nem um a menos (WAV truncado)."""
-    union = {audio_id for window in windows for audio_id in window.segment_audio_ids}
-    assert required_audio_ids(windows) == frozenset(union)
+    union = {audio_id for window in windows for audio_id in window.segment_file_paths}
+    assert required_file_paths(windows) == frozenset(union)
     # As janelas da Etapa 1 não se sobrepõem, então a união tem exatamente o
     # total de segmentos — se algum dia se sobrepuserem, este teste avisa.
     assert len(union) == sum(window.n_segments for window in windows)
-    assert required_audio_ids([]) == frozenset()
+    assert required_file_paths([]) == frozenset()
 
 
 # --------------------------------------------------------------------------- #
@@ -533,7 +538,7 @@ def test_build_manifest_reports_the_two_durations_side_by_side(windows, frame):
     assert row["duration_obtained_s"] == pytest.approx(window.duration_s, abs=1e-4)
     assert row["duration_delta_s"] == pytest.approx(0.0, abs=1e-4)
     assert row["n_segments"] == window.n_segments
-    assert row["segment_audio_ids"] == ";".join(str(a) for a in window.segment_audio_ids)
+    assert row["segment_file_paths"] == ";".join(str(a) for a in window.segment_file_paths)
     assert row["region"] == window.region
 
     # Metade do áudio esperado ⇒ delta negativo de meia janela, sem esconder nada.
@@ -686,7 +691,7 @@ def test_materialize_windows_flags_a_window_whose_segment_was_not_downloaded(win
     """Segmento ausente não vira WAV incompleto: vira status, e a janela sai inteira."""
     window = windows[0]
     cells = _cells_for([window], frame)
-    del cells[window.segment_audio_ids[0]]
+    del cells[window.segment_file_paths[0]]
 
     results = materialize_windows([window], cells, "/caminho/que/nao/sera/usado")
 
@@ -698,7 +703,7 @@ def test_materialize_windows_flags_a_window_whose_segment_was_not_downloaded(win
 def test_materialize_windows_flags_a_window_whose_bytes_do_not_decode(windows, tmp_path):
     """Falha de codec é contabilizada como motivo, não propagada como exceção."""
     window = windows[0]
-    cells = {audio_id: b"isto nao e um wav" for audio_id in window.segment_audio_ids}
+    cells = {audio_id: b"isto nao e um wav" for audio_id in window.segment_file_paths}
 
     results = materialize_windows([window], cells, tmp_path)
 

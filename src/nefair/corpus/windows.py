@@ -51,16 +51,20 @@ from nefair.corpus.audit import (
 from nefair.corpus.load import load_metadata
 from nefair.schema import ExclusionLedger, Provenance, Window
 
-# Ordenação canônica dos segmentos do informante. `audio_id` entra como último
+# Ordenação canônica dos segmentos do informante. `file_path` entra como último
 # critério de desempate para que dois segmentos com o mesmo `start_time` (borda
 # de arredondamento em float32) nunca troquem de lugar entre execuções.
-SEGMENT_ORDER: tuple[str, ...] = ("speaker_code", "audio_name", "start_time", "audio_id")
+#
+# O desempate é `file_path`, e NÃO `audio_id`: este último identifica a GRAVAÇÃO
+# (um só `audio_id` cobre a entrevista inteira, mais de mil linhas), então não
+# desempataria nada. `file_path` é único por linha.
+SEGMENT_ORDER: tuple[str, ...] = ("speaker_code", "audio_name", "start_time", "file_path")
 
 # Ordenação dentro da GRAVAÇÃO, usada para detectar o turno de entrevistador.
 # Aqui NÃO se ordena por `speaker_code`: informante e entrevistador têm códigos
 # diferentes, e ordenar por falante desfaria justamente a intercalação que
 # queremos enxergar.
-RECORDING_ORDER: tuple[str, ...] = ("audio_name", "start_time", "audio_id")
+RECORDING_ORDER: tuple[str, ...] = ("audio_name", "start_time", "file_path")
 
 # Motivos de quebra de janela, contabilizados um a um no relatório.
 BREAK_AUDIO = "troca_de_gravacao"
@@ -459,7 +463,7 @@ def _select_and_build(
         by_speaker.setdefault(candidate.speaker_code, []).append(candidate)
 
     reference = eligible[config.reference_field].to_numpy()
-    audio_ids = eligible["audio_id"].to_numpy("int64")
+    file_paths = eligible["file_path"].to_numpy()
     start_time = eligible["start_time"].to_numpy("float64")
     end_time = eligible["end_time"].to_numpy("float64")
 
@@ -499,7 +503,7 @@ def _select_and_build(
                     split=str(head["split"]),
                     region=str(head["region"]),
                     age=int(head["age"]),
-                    segment_audio_ids=tuple(int(a) for a in audio_ids[rows]),
+                    segment_file_paths=tuple(str(p) for p in file_paths[rows]),
                     start_time=float(start_time[candidate.row_start]),
                     end_time=float(end_time[candidate.row_end - 1]),
                     duration_s=round(candidate.duration_s, 6),
@@ -527,7 +531,7 @@ WINDOW_SCHEMA = pa.schema(
         ("split", pa.string()),
         ("region", pa.string()),
         ("age", pa.int64()),
-        ("segment_audio_ids", pa.list_(pa.int64())),
+        ("segment_file_paths", pa.list_(pa.string())),
         ("start_time", pa.float64()),
         ("end_time", pa.float64()),
         ("duration_s", pa.float64()),
@@ -550,7 +554,7 @@ def windows_to_table(windows: tuple[Window, ...], provenance: Provenance | None 
         columns["split"].append(window.split)
         columns["region"].append(window.region)
         columns["age"].append(window.age)
-        columns["segment_audio_ids"].append(list(window.segment_audio_ids))
+        columns["segment_file_paths"].append(list(window.segment_file_paths))
         columns["start_time"].append(window.start_time)
         columns["end_time"].append(window.end_time)
         columns["duration_s"].append(window.duration_s)
@@ -593,7 +597,7 @@ def read_windows_parquet(path: str | Path) -> tuple[Window, ...]:
             split=row["split"],
             region=row["region"],
             age=int(row["age"]),
-            segment_audio_ids=tuple(int(a) for a in row["segment_audio_ids"]),
+            segment_file_paths=tuple(str(p) for p in row["segment_file_paths"]),
             start_time=float(row["start_time"]),
             end_time=float(row["end_time"]),
             duration_s=float(row["duration_s"]),

@@ -126,9 +126,7 @@ def demo_windows() -> tuple[Window, ...]:
                     split="train",
                     region=region,
                     age=age,
-                    segment_file_paths=tuple(
-                        f"demo/{index:02d}/seg_{k:02d}.wav" for k in range(8)
-                    ),
+                    segment_file_paths=tuple(f"demo/{index:02d}/seg_{k:02d}.wav" for k in range(8)),
                     start_time=start,
                     end_time=start + 45.0,
                     duration_s=45.0,

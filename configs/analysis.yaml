@@ -16,11 +16,16 @@ wer:
   reference_field: normalized_text
   normalizer_version: v1
 
-# Bootstrap no NIVEL DO FALANTE, estratificado por regiao: reamostra 39 NE e
-# 193 SE separadamente. Sem estratificar, reamostras com pouquissimos falantes
-# do NE alargariam o IC por artefato de reamostragem, nao por incerteza real.
-# As MESMAS reamostras sao reusadas entre condicoes, preservando o pareamento
-# item a item exigido pela decomposicao.
+# Bootstrap no NIVEL DO FALANTE, estratificado por regiao: reamostra os falantes
+# elegiveis de cada regiao separadamente. Sem estratificar, reamostras com
+# pouquissimos falantes do NE alargariam o IC por artefato de reamostragem, nao
+# por incerteza real. As MESMAS reamostras sao reusadas entre condicoes,
+# preservando o pareamento item a item exigido pela decomposicao.
+#
+# Os elegiveis sao 33 do NE e 132 do SE -- NAO 39/193, que e a contagem do corpus
+# BRUTO, antes do recorte 20-69 (ver outputs/windows_report.md). O codigo
+# estratifica pelo que esta no dado, entao este numero e so documentacao;
+# sincronizar se o recorte etario mudar.
 bootstrap:
   n_resamples: 2000
   seed: 20260918

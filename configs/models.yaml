@@ -24,8 +24,17 @@ asr:
   contamination_checked: false
   contamination_note: >-
     Verificar o card de treino do checkpoint. Se houver sobreposicao com
-    CORAA/MuPe, usar o Whisper base ou restringir ao split `test`.
-  # Preencher com `test` se a mitigacao escolhida for restringir o split.
+    CORAA/MuPe, usar o Whisper base. NAO restringir ao split `test`: ver a nota
+    abaixo.
+  # ATENCAO: restringir ao split `test` NAO e mitigacao viavel neste corpus.
+  # O `test` do CORAA-MUPE e enviesado para o NE: das 1.602 janelas, o `test`
+  # tem 91 do NE contra 40 do SE -- e apenas 10 falantes do NE e 4 do SE.
+  # Com 4 falantes num braco, o bootstrap no nivel do falante perde sentido, e o
+  # desbalanco se INVERTE (2,3:1 a favor do NE). Medido em 2026-10-08; ver
+  # docs/relatorio_progresso.md secao 6.3.
+  # A via defensavel e usar um checkpoint com treino documentado
+  # (`whisper-large-v3` publicado) e verificar o card contra CORAA/MuPe; se houver
+  # sobreposicao, usar o Whisper base -- nao o recorte de split.
   split_restriction: null
 
 # Modelos avaliados, por chave curta. `family` e o que permite o pareamento

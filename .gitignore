@@ -230,6 +230,9 @@ __marimo__/
 /outputs/windows.parquet
 /outputs/audio/
 /outputs/audio_manifest.csv
+# Reescrito a cada execucao da Etapa 2 e dependente do --windows usado (plano do
+# piloto sobrescreve o do conjunto completo). Derivado: nao versionar.
+/outputs/audio_download_plan.csv
 /outputs/items*.jsonl
 /outputs/run_cache.jsonl
 /outputs/review_sheet*.csv

@@ -542,9 +542,7 @@ def fetch_row_group_cells(
         coalesce_ranges(audio_ranges + id_ranges, COALESCE_GAP)
     ):
         sparse.add(offset, data)
-    table = pq.ParquetFile(sparse).read_row_groups(
-        [row_group], columns=[AUDIO_COLUMN, "file_path"]
-    )
+    table = pq.ParquetFile(sparse).read_row_groups([row_group], columns=[AUDIO_COLUMN, "file_path"])
     ids = table.column("file_path").to_pylist()
     cells = table.column(AUDIO_COLUMN).to_pylist()
     return {

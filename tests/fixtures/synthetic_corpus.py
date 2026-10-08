@@ -157,9 +157,7 @@ def _rows_for_speaker(plan: SpeakerPlan, audio_id_start: int) -> tuple[list[dict
                 {
                     "audio_id": rec_id(audio_name),
                     "audio_name": audio_name,
-                    "file_path": seg_path(
-                        audio_name, index, clock, clock + SEGMENT_DURATION
-                    ),
+                    "file_path": seg_path(audio_name, index, clock, clock + SEGMENT_DURATION),
                     "speaker_type": "P/1",
                     "speaker_code": f"{plan.speaker_code}_ENTREVISTADOR",
                     "speaker_gender": "M",

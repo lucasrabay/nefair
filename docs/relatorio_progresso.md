@@ -318,6 +318,50 @@ Com 4 falantes num braço, o bootstrap no nível do falante estratificado por re
 
 **Consequência para o D8:** a única via defensável é usar um ASR cujo treino esteja documentado — o checkpoint publicado `whisper-large-v3`, servido por um host que confirme servir os pesos publicados — e verificar o card de treino contra CORAA/MuPe. Se houver sobreposição, a alternativa é o Whisper base, não o recorte de split.
 
+### 6.4 Por que criar um split próprio não resolve o D8
+
+Pergunta levantada em 2026-10-08, e vale registrar a resposta porque o raciocínio é fácil de errar.
+
+**Contaminação é propriedade do conjunto de treino do ASR, não da nossa partição.** A divisão que importa foi desenhada por quem treinou o modelo. Se o CORAA entrou no treino, ele entrou — rotular linhas como "nosso test" hoje não as remove de um treino já ocorrido. Um split nosso não tem efeito algum sobre o que o modelo viu.
+
+O `test` publicado do CORAA tinha *algum* valor por ser a **convenção**: quem faz fine-tuning sobre um corpus tende a respeitar a divisão oficial. É uma aposta sobre o comportamento de terceiros, fraca mas não nula. Uma fronteira que nós inventamos não carrega essa propriedade.
+
+**Nota de desenho:** este não é um estudo de treinamento. Não há ajuste em `train` com avaliação em `test` — as 1.602 janelas entram todas na análise, independentemente do split, e a coluna `split` é apenas proveniência. O split só entra na discussão por causa do D8.
+
+#### A variante que funciona: holdout por pertinência documentada
+
+Se o card do ASR documentar a pertinência ao treino (declarar o split usado, ou listar arquivos), então o holdout defensável é o **complemento daquela lista** — sob medida para aquele modelo, e estritamente melhor que o `test` do corpus. Isso é o que o D8 manda verificar. Se o card não documentar, não há recorte possível, porque não se sabe o que recortar.
+
+#### Sonda de contaminação — medir em vez de assumir
+
+O viés do `test` para o NE, que o inviabiliza como restrição (§6.3), o torna aproveitável como sonda.
+
+| Região | Falantes em `train` | Falantes em `test` | Idade média (train / test) |
+|---|--:|--:|---|
+| NE | 21 | **10** | 45,8 / 46,3 |
+| SE | 125 | 4 | 48,7 / 45,5 |
+
+**Desenho:** comparar o WER sobre falantes de `train` contra falantes de `test`, **dentro da mesma região**. Se o ASR memorizou o `train`, o WER daquele lado deve ser visivelmente menor. No NE a comparação é 21 contra 10 falantes; a idade está equilibrada (45,8 vs 46,3), então esse confundidor não polui o contraste.
+
+**Limites a reportar junto com o resultado:**
+
+- **É entre falantes, não dentro do falante.** Zero informantes aparecem em mais de um split, então a diferença mistura contaminação com variação individual. Com 21 vs 10 falantes, só um efeito grande seria detectável.
+- **Detecta, nunca descarta.** Se o treino cobriu o corpus inteiro, WER(train) ≈ WER(test) e a sonda não acusa nada. Resultado nulo é fracamente reconfortante, não prova de ausência.
+- **O SE não serve** para a sonda: 4 falantes.
+
+Ainda assim, troca "suponho que não há contaminação" por "procurei e não achei, com esta sensibilidade" — que é o máximo afirmável sem acesso ao treino.
+
+#### Ordem recomendada para fechar o D8
+
+1. **Não usar um fine-tune PT-BR.** A preocupação concentra-se nas variantes do Whisper ajustadas para português, várias das quais listam o CORAA no treino. O `whisper-large-v3` publicado não foi ajustado neste corpus e tem o treino descrito no artigo. Risco residual: o CORAA pode estar entre as 680k h de áudio web do pré-treino — supervisão fraca de varredura, não ajuste direcionado, e declarável como tal.
+2. **Verificar o card** do checkpoint efetivamente servido pelo host contra CORAA/MuPe.
+3. **Rodar a sonda** acima e reportar o número.
+4. Só então `contamination_checked: true`.
+
+#### Onde um split nosso seria legítimo
+
+Por higiene de análise, não por contaminação: `gap_tolerance_s = 2,0` foi escolhido olhando o dado completo (§4). Para um estudo descritivo com a varredura publicada isso é defensável, mas um revisor rigoroso pode objetar. Um split nosso de desenvolvimento × final endereçaria essa objeção. Não tem relação com o D8.
+
 ---
 
 ## 7. O áudio do piloto
@@ -455,7 +499,7 @@ Lista fechada do que as medições acima obrigam a declarar:
 3. **As janelas concentram-se perto do piso de 30 s** (mediana 35,89 s), consequência de empacotar pelo menor tamanho válido para maximizar candidatas (§5.3).
 4. **Falantes do NE têm ~6,6× mais chance de não comportar as 10 janelas** (15,2% vs 2,3%), o que torna o painel ligeiramente desbalanceado também no nível do falante (§6.1).
 5. **Os segmentos do NE são ~11% mais curtos**, de causa indeterminável pelos metadados (§6.2).
-6. **O `test` do corpus é enviesado para o NE**, o que inviabiliza o recorte de split como mitigação de contaminação (§6.3).
+6. **O `test` do corpus é enviesado para o NE**, o que inviabiliza o recorte de split como mitigação de contaminação (§6.3) — e criar um split próprio não substitui, porque contaminação é propriedade do treino do ASR, não da nossa partição (§6.4).
 7. **Escolaridade e categoria racial não entram como controles** por ausência de 61–92% nos metadados (§8.2, §8.3).
 8. **Concentração por falante no NE** — 7,35% dos segmentos num único informante (§8.5).
 9. **Teto da tarefa assumido como 1,0 por construção** (D4), afirmação sobre o instrumento que depende da revisão humana para se sustentar (§2.1).
@@ -505,7 +549,7 @@ Depois de um `--dry-run` que falhou por rede, eu li totais (183.531 linhas, 25,7
 
 - **Comentário obsoleto em `configs/analysis.yaml`:** diz que o bootstrap "reamostra 39 NE e 193 SE". Os números corretos são **33 e 132** (elegíveis, não corpus bruto). O código estratifica pelo que está no dado, então o comportamento está certo; o comentário é que engana quem ler.
 - **`split_restriction: test` em `configs/models.yaml`** está listado como mitigação viável do D8. Pela §6.3, não é. O comentário precisa dizer isso.
-- **D8 em aberto.** `contamination_checked: false` bloqueia a execução completa, por desenho.
+- **D8 em aberto.** `contamination_checked: false` bloqueia a execução completa, por desenho. Caminho para fechar em §6.4: checkpoint sem fine-tune PT-BR, verificação do card, e a sonda train-vs-test dentro do NE.
 
 ### 12.3 Credenciais
 

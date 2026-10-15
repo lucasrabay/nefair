@@ -1,10 +1,10 @@
 # Relatório de progresso — decisões e medições
 
-**Data:** 2026-10-08
+**Data:** 2026-10-08 · **Revisado:** 2026-10-15 (§3.7 nova; correções em §2.1, §6.1, §6.3, §6.4, §8.1, §10, §12.4)
 **Escopo:** Etapas 0–2 executadas sobre o corpus real; Etapas 3–6 implementadas e testadas, ainda não executadas.
 **Finalidade:** servir de fonte única para a redação da Metodologia, da seção de Amostra e da seção de Limitações. Todo número abaixo é rastreável ao artefato que o produziu.
 
-> **Convenção:** cada medição vem com o arquivo que a gerou. Nenhum número neste relatório foi estimado ou arredondado de cabeça — se um valor não puder ser reproduzido rodando o script indicado, é um defeito deste relatório.
+> **Convenção:** cada medição vem com o arquivo que a gerou. Nenhum número neste relatório foi estimado ou arredondado de cabeça — se um valor não puder ser reproduzido rodando o script indicado, é um defeito deste relatório. **Única exceção:** as projeções de §12.4, marcadas como estimativa, que não entram no texto como medição.
 
 ---
 
@@ -49,10 +49,12 @@ A decomposição do erro é:
 
 ```
 Δ_ASR          = acc(reference) − acc(asr)
-Δ_compreensão  = teto − acc(reference)
+Δ_raciocínio   = teto − acc(reference)
 ```
 
-Assumir `teto = 1,0` **por construção** significa afirmar que todo item que sobreviveu ao filtro textual e à revisão humana é respondível sem ambiguidade a partir da transcrição de referência. É uma afirmação sobre o instrumento, não sobre o modelo — e é exatamente o que a revisão humana existe para sustentar. O modo usado (`constructed` vs `human_sample`) é **rotulado na saída**, porque `Δ_compreensão` não é comparável entre modos.
+O nome é **Δ_raciocínio** (raciocínio linguístico), o mesmo do título, de `configs/analysis.yaml` (`Delta_raciocinio`) e de `analysis/decompose.py`. Até 2026-10-15 este relatório usava "Δ_compreensão" para a mesma quantidade.
+
+Assumir `teto = 1,0` **por construção** significa afirmar que todo item que sobreviveu ao filtro textual e à revisão humana é respondível sem ambiguidade a partir da transcrição de referência. É uma afirmação sobre o instrumento, não sobre o modelo — e é exatamente o que a revisão humana existe para sustentar. O modo usado (`constructed` vs `human_sample`) é **rotulado na saída**, porque `Δ_raciocínio` não é comparável entre modos.
 
 Consequência a declarar: se a revisão do piloto encontrar taxa de rejeição alta, a hipótese `teto = 1,0` fica frágil e `human_sample` volta à mesa.
 
@@ -158,6 +160,21 @@ Por década:
 | 60–69 | 6 | 28 |
 
 As duas distribuições são comparáveis (diferença de médias ~2,6 anos, desvios próximos). Isso é favorável: a idade entra como covariável de controle sem sobreposição problemática entre os grupos.
+
+### 3.7 Gênero dos elegíveis
+
+O §8.1 é do corpus bruto (39 / 193). Como gênero entra no modelo (D6), o que importa é a composição dos elegíveis.
+
+| Região | n | F | M | X | % F |
+|---|--:|--:|--:|--:|--:|
+| NE | 33 | 18 | 15 | 0 | 54,5% |
+| SE | 132 | 51 | 81 | 0 | 38,6% |
+
+*Fonte: `outputs/gender_eligible_by_region.csv`, gerado por `scripts/eligible_gender.py` (metadados da revisão fixada, cruzados com os falantes de `outputs/windows.parquet`).*
+
+O recorte 20–69 **aumenta** a diferença de composição entre as regiões. No corpus, a proporção de mulheres é 53,8% no NE (21/39) e 45,1% no SE (87/193); entre os elegíveis, 54,5% e 38,6%. No NE o recorte tira 3 mulheres e 3 homens (21 → 18, 18 → 15); no SE, 36 mulheres e 25 homens (87 → 51, 106 → 81).
+
+Isso reforça o D6: a diferença de gênero entre as regiões que o modelo controla é maior na amostra analisada do que no corpus.
 
 ---
 
@@ -286,7 +303,9 @@ Oito dos 165 falantes não comportam 10 janelas disjuntas. **Cinco são do NE.**
 | NE | 5 | **15,2%** | 23 | 47,9% |
 | SE | 3 | **2,3%** | 25 | 52,1% |
 
-O NE é 20% dos falantes elegíveis, mas concentra 62,5% dos falantes afetados. Em termos relativos, um falante do NE tem ~6,6× mais chance de não comportar as 10 janelas.
+O NE é 20% dos falantes elegíveis, mas concentra 62,5% dos falantes afetados. Em termos relativos, a proporção de falantes do NE que não comportam as 10 janelas é **6,7 vezes** a do SE: (5/33) / (3/132) = 6,67.
+
+*Correção de 2026-10-15:* a versão anterior dizia "~6,6× mais chance". Eram dois erros: (a) é razão de **proporções**, não de chances; (b) 6,6 saiu da divisão das porcentagens já arredondadas (15,2 / 2,3), e a conta com as contagens dá 6,67.
 
 ### 6.2 Os segmentos do NE são mais curtos
 
@@ -316,7 +335,12 @@ O `configs/models.yaml` prevê, como mitigação de contaminação do Whisper, `
 
 Com 4 falantes num braço, o bootstrap no nível do falante estratificado por região perde qualquer sentido — o intervalo de confiança do SE seria dominado pela reamostragem de 4 pessoas. E o desbalanço se **inverte**, ficando 2,3:1 a favor do NE.
 
-**Consequência para o D8:** a única via defensável é usar um ASR cujo treino esteja documentado — o checkpoint publicado `whisper-large-v3`, servido por um host que confirme servir os pesos publicados — e verificar o card de treino contra CORAA/MuPe. Se houver sobreposição, a alternativa é o Whisper base, não o recorte de split.
+**Consequência para o D8:** a mitigação tem que vir do lado do ASR, não do split: usar o checkpoint publicado `whisper-large-v3` (sem fine-tune PT-BR), servido por um host que confirme servir os pesos publicados, e verificar o card de treino contra CORAA/MuPe.
+
+*Correção de 2026-10-15:* a versão anterior chamava o `whisper-large-v3` de "ASR cujo treino esteja documentado" e dava "o Whisper base" como alternativa em caso de sobreposição. As duas coisas não se sustentam (detalhes em §6.4, item 1):
+
+- O card do `whisper-large-v3` informa o **volume** do treino, mas **não lista as fontes**. A verificação contra CORAA/MuPe não tem como confirmar ausência.
+- "Whisper base" só pode significar o tamanho `openai/whisper-base` (74 M parâmetros), porque o `large-v3` já é o checkpoint sem ajuste fino. Esse modelo foi treinado nas 680k h do artigo original, também áudio web com supervisão fraca e também sem lista de fontes. Trocar para ele **não resolve** a contaminação no pré-treino: só deixa de fora o que o v3 acrescentou, e com um modelo 21 vezes menor (74 M contra 1.550 M, cards da HF), o que muda a condição `asr` inteira.
 
 ### 6.4 Por que criar um split próprio não resolve o D8
 
@@ -353,8 +377,8 @@ Ainda assim, troca "suponho que não há contaminação" por "procurei e não ac
 
 #### Ordem recomendada para fechar o D8
 
-1. **Não usar um fine-tune PT-BR.** A preocupação concentra-se nas variantes do Whisper ajustadas para português, várias das quais listam o CORAA no treino. O `whisper-large-v3` publicado não foi ajustado neste corpus e tem o treino descrito no artigo. Risco residual: o CORAA pode estar entre as 680k h de áudio web do pré-treino — supervisão fraca de varredura, não ajuste direcionado, e declarável como tal.
-2. **Verificar o card** do checkpoint efetivamente servido pelo host contra CORAA/MuPe.
+1. **Não usar um fine-tune PT-BR.** A preocupação concentra-se nas variantes do Whisper ajustadas para português, várias das quais listam o CORAA no treino. O `whisper-large-v3` publicado não é um fine-tune sobre este corpus. O card dele (conferido em 2026-10-15) diz que o treino usou 1M h de áudio com rótulo fraco e 4M h pseudo-rotuladas pelo `large-v2`, por 2 épocas; não lista as fontes; e remete ao artigo original (Radford et al., 2022), que descreve as 680k h das versões anteriores, não o treino do v3. Risco residual: o CORAA/MuPe pode estar nesse pré-treino — supervisão fraca ou pseudo-rótulo em escala, não ajuste direcionado, e declarável como tal.
+2. **Verificar o card** do checkpoint efetivamente servido pelo host contra CORAA/MuPe. Para o checkpoint da OpenAI, o card não lista fontes (2026-10-15): a verificação não confirma ausência, e o holdout por pertinência documentada (acima) não se aplica a ele.
 3. **Rodar a sonda** acima e reportar o número.
 4. Só então `contamination_checked: true`.
 
@@ -428,7 +452,7 @@ A escolha de covariáveis não foi teórica: foi determinada pela cobertura real
 | NE | 21 | 18 | 0 | 100% |
 | SE | 87 | 106 | 0 | 100% |
 
-Nenhum `unknown`. Serve de controle. A proporção difere entre regiões (NE 54% F, SE 45% F), o que é exatamente o motivo de controlar.
+Nenhum `unknown`. Serve de controle. A proporção difere entre regiões (NE 54% F, SE 45% F), o que é exatamente o motivo de controlar. Esta tabela é do corpus bruto; entre os elegíveis a diferença é maior (54,5% contra 38,6%, §3.7).
 
 ### 8.2 Escolaridade (cobertura ruim → fora)
 
@@ -497,7 +521,7 @@ Lista fechada do que as medições acima obrigam a declarar:
 1. **Desbalanço regional de ~4:1** (33 NE / 132 SE). Vem do corpus (39/193), e o recorte etário o atenua levemente em vez de agravá-lo (§3.5). Nenhuma escolha estatística o conserta; a estratificação do bootstrap apenas evita que o IC fique largo por artefato de reamostragem.
 2. **"Fala contínua" é uma operacionalização nossa**, fixada em 2,0 s com evidência empírica (§4). Outro valor daria outro conjunto de janelas — a varredura está versionada para que o leitor avalie a sensibilidade.
 3. **As janelas concentram-se perto do piso de 30 s** (mediana 35,89 s), consequência de empacotar pelo menor tamanho válido para maximizar candidatas (§5.3).
-4. **Falantes do NE têm ~6,6× mais chance de não comportar as 10 janelas** (15,2% vs 2,3%), o que torna o painel ligeiramente desbalanceado também no nível do falante (§6.1).
+4. **A proporção de falantes do NE que não comportam as 10 janelas é 6,7 vezes a do SE** (5/33 = 15,2% vs 3/132 = 2,3%), o que torna o painel ligeiramente desbalanceado também no nível do falante (§6.1).
 5. **Os segmentos do NE são ~11% mais curtos**, de causa indeterminável pelos metadados (§6.2).
 6. **O `test` do corpus é enviesado para o NE**, o que inviabiliza o recorte de split como mitigação de contaminação (§6.3) — e criar um split próprio não substitui, porque contaminação é propriedade do treino do ASR, não da nossa partição (§6.4).
 7. **Escolaridade e categoria racial não entram como controles** por ausência de 61–92% nos metadados (§8.2, §8.3).
@@ -559,14 +583,18 @@ Depois de um `--dry-run` que falhou por rede, eu li totais (183.531 linhas, 25,7
 
 ### 12.4 Dimensionamento restante
 
-| Passo | Piloto (120 itens) | Completo (1.602 itens) |
-|---|--:|--:|
-| Geração | 120 chamadas | 1.602 |
-| Filtro textual (3 modelos × 3 execuções) | 1.080 | 14.418 |
-| ASR | 120 janelas / 78 min | 1.602 janelas / 17,37 h |
-| Avaliação (9 células por item) | ~630 | ~8.400 |
-| Revisão humana | ~85 itens | ~1.100 itens (~27 h a 1,5 min/item) |
+> ⚠️ **Projeção, não medição.** É a exceção à convenção do topo. Nada desta tabela entra no texto como número medido.
+
+| Passo | Piloto (120 itens) | Completo (1.602 itens) | Natureza |
+|---|--:|--:|---|
+| Geração | 120 chamadas | 1.602 | contagem: 1 item por janela |
+| Filtro textual (3 modelos × 3 execuções) | 1.080 | 14.418 | contagem: 9 chamadas por item gerado |
+| ASR | 120 janelas / 78 min | 1.602 janelas / 17,37 h | medido (§5.4, §7.2) |
+| Avaliação (9 células por item) | ~630 | ~8.400 | **estimativa** |
+| Revisão humana | ~85 itens | ~1.100 itens (~27 h a 1,5 min/item) | **estimativa** |
+
+As duas últimas linhas dependem da taxa de descarte do filtro textual e dos minutos por item, que só o piloto vai medir. Os 1,5 min/item são suposição. As estimativas também não são coerentes entre si: ~630 / 9 = 70 itens avaliados no piloto, contra ~85 revisados. Vieram de suposições de descarte diferentes, e nenhuma delas foi registrada.
 
 Os números do conjunto completo caíram em relação ao plano original, que supunha 2.320 itens — reflexo dos 165 falantes elegíveis contra os 232 estimados antes do recorte etário.
 
-**A revisão humana segue sendo o caminho crítico.** É por isso que o gate do piloto existe: medir a taxa de aceitação e os minutos por item em 120 itens balanceados antes de comprometer ~27 h de trabalho.
+**A revisão humana segue sendo o caminho crítico.** É por isso que o gate do piloto existe: medir a taxa de aceitação e os minutos por item em 120 itens balanceados antes de comprometer as horas de revisão do conjunto completo (~27 h na estimativa acima).

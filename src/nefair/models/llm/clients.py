@@ -165,9 +165,17 @@ class AnthropicTextQA:
       tokens de raciocínio contam contra `max_tokens`: teto apertado devolve
       `stop_reason="max_tokens"` com nenhum bloco de texto, ou seja, item perdido
       sem erro aparente. Dimensionar `max_output_tokens` para raciocínio + item;
-    - **o SDK 1.x não aceita nenhum controle de amostragem** em `messages.create`:
-      nem `temperature`, nem `top_p`, nem `top_k` (verificado contra o
-      `anthropic` 1.15.0 em 2026-10-16). Ver `_sdk_params`.
+    - **os modelos atuais removeram o controle de amostragem**: `temperature`,
+      `top_p` e `top_k` são rejeitados com 400 em Opus 5.5/5/4.8/4.7, Fable 5/5.1
+      e Sonnet 5 (e em valor não-padrão em Sonnet 5.5 e Haiku 5.5). Não é
+      limitação do SDK: o parâmetro saiu da API. O substituto é
+      `output_config.effort`, que este adaptador aceita como `effort` em `params`.
+      Ver `_sdk_params`.
+
+    Sobre `effort`: o padrão do Opus 5.5 é `medium`, um nível abaixo do padrão do
+    Opus 5. Declará-lo explicitamente no `items.yaml` não é redundância — é o que
+    torna o valor reportável na Metodologia e o que o faz entrar no
+    `fingerprint()`, e portanto na chave de cache.
     """
 
     spec: ModelSpec
@@ -183,7 +191,7 @@ class AnthropicTextQA:
         return self.client
 
     def _sdk_params(self) -> dict[str, Any]:
-        """Parâmetros do YAML, recusando os que este provedor não honra.
+        """Parâmetros do YAML traduzidos, recusando os que a API removeu.
 
         Descartar `temperature` em silêncio seria pior do que falhar: o config é a
         descrição do experimento e entra no relatório, então o texto afirmaria uma
@@ -194,22 +202,29 @@ class AnthropicTextQA:
         o que fazer, em vez de seguir sob uma suposição errada.
         """
         params = chat_params(self.spec.params)
+
         rejeitados = sorted(p for p in ("temperature", "top_p", "top_k") if p in params)
         if rejeitados:
             raise ValueError(
                 f"O modelo '{self.spec.key}' ({self.spec.model_id}) declara "
-                f"{', '.join(rejeitados)} em `params`, mas o SDK da Anthropic (1.x) não "
-                "aceita controle de amostragem em `messages.create` — o valor seria "
-                "ignorado, e o relatório afirmaria um parâmetro que não foi aplicado.\n"
-                "  Remova-o de `generator.params` em configs/items.yaml (o gerador roda "
-                "no padrão do provedor, e isso passa a ser o que o texto declara), ou "
-                "use um provedor que honre o parâmetro."
+                f"{', '.join(rejeitados)} em `params`, mas os modelos atuais da Anthropic "
+                "removeram o controle de amostragem — a API responde 400. Não é limitação "
+                "do SDK, e o parâmetro não tem como ser honrado.\n"
+                "  O substituto é `effort` (low|medium|high|xhigh|max), que este adaptador "
+                "traduz para `output_config.effort`. Em configs/items.yaml, troque "
+                f"{rejeitados[0]} por `effort` em `generator.params`."
             )
+
         if "max_tokens" not in params:
             raise ValueError(
                 f"O modelo '{self.spec.key}' precisa de `max_output_tokens` em `params`: "
                 "`max_tokens` é obrigatório no SDK da Anthropic."
             )
+
+        # `effort` é um campo de `output_config`, não um parâmetro de topo.
+        effort = params.pop("effort", None)
+        if effort is not None:
+            params["output_config"] = {**params.get("output_config", {}), "effort": effort}
         return params
 
     def answer(self, prompt: str) -> QAResult:

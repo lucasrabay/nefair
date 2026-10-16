@@ -14,11 +14,32 @@ n_alternatives: 4
 # valida isso por `model_id` e falha se houver colisao com models.yaml.
 generator:
   provider: anthropic
-  model_id: PLACEHOLDER-modelo-gerador-fora-do-conjunto-avaliado
-  version: PLACEHOLDER
+  model_id: claude-opus-5-5
+  # ATENCAO: a Anthropic nao expoe snapshot datado para este modelo -- o id acima
+  # ja e completo e nao aceita sufixo de data. Entao este campo registra QUANDO
+  # rodamos, nao QUAL snapshot respondeu. E uma limitacao de reprodutibilidade a
+  # declarar no texto: um terceiro que re-rode em outra data pode receber outros
+  # pesos sob o mesmo id.
+  version: 2026-10-16
   role: text_qa
   family: generator
-  params: { temperature: 0.2, max_output_tokens: 1024 }
+  # `temperature` SAIU: os modelos atuais da Anthropic removeram o controle de
+  # amostragem e a API responde `400 -- temperature is deprecated for this
+  # model` (verificado contra o Opus 5.5 em 2026-10-16). O substituto e `effort`,
+  # que o adaptador traduz para `output_config.effort`.
+  #
+  # `effort: medium` e o padrao do Opus 5.5, declarado aqui de proposito: o valor
+  # precisa ser reportavel na Metodologia e precisa entrar no `fingerprint()`, e
+  # um default implicito nao e nem uma coisa nem outra. Gerar item de multipla
+  # escolha a partir de uma transcricao nao e tarefa de raciocinio profundo; se o
+  # piloto mostrar taxa de rejeicao alta na revisao humana, subir para `high` e a
+  # primeira coisa a tentar.
+  #
+  # `max_output_tokens` subiu de 1.024 para 8.000: no Opus 5.5 o raciocinio NAO
+  # pode ser desligado e consome o mesmo teto. Com teto apertado a resposta volta
+  # com `stop_reason="max_tokens"` e NENHUM bloco de texto -- item perdido sem
+  # erro aparente. Medido: com teto de 16 foi exatamente o que aconteceu.
+  params: { effort: medium, max_output_tokens: 8000 }
 
 # D2 - mecanismo dos distratores. O texto diz que o LLM "propoe" as incorretas,
 # mas que elas sao "extraidas de outros trechos". Resolvemos exigindo as duas

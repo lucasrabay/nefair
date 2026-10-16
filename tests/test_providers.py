@@ -386,19 +386,53 @@ def test_anthropic_ignora_bloco_de_raciocinio():
     assert adapter.answer("p").raw_text == "B"
 
 
-def test_anthropic_recusa_temperature_em_vez_de_ignorar():
-    """O SDK 1.x não aceita controle de amostragem; descartar seria mentir.
+@pytest.mark.parametrize("parametro", ["temperature", "top_p", "top_k"])
+def test_anthropic_recusa_amostragem_em_vez_de_ignorar(parametro):
+    """Os modelos atuais removeram o controle de amostragem; descartar seria mentir.
 
-    O config é a descrição do experimento e entra no relatório. Se `temperature`
-    fosse silenciosamente dropada, o texto afirmaria um parâmetro que nunca foi
-    aplicado. Mesma política do portão D8: recusar e dizer o que fazer.
+    Não é limitação do SDK: a API responde `400 — temperature is deprecated for
+    this model` (verificado contra o Opus 5.5). O config é a descrição do
+    experimento e entra no relatório, então dropar em silêncio faria o texto
+    afirmar um parâmetro que nunca foi aplicado. Mesma política do portão D8.
     """
     adapter = AnthropicTextQA(
-        spec=spec_for("anthropic", params={"temperature": 0.2, "max_output_tokens": 1024}),
+        spec=spec_for("anthropic", params={parametro: 0.2, "max_output_tokens": 1024}),
         client=FakeAnthropicClient(),
     )
-    with pytest.raises(ValueError, match="temperature"):
+    with pytest.raises(ValueError, match=parametro) as excinfo:
         adapter.answer("p")
+    # A mensagem precisa apontar o substituto, não só recusar.
+    assert "effort" in str(excinfo.value)
+
+
+def test_anthropic_traduz_effort_para_output_config():
+    """`effort` é campo de `output_config`, não parâmetro de topo.
+
+    É o substituto do controle de amostragem nos modelos atuais, e o padrão do
+    Opus 5.5 é `medium` — declará-lo explicitamente é o que o torna reportável na
+    Metodologia e o que o faz entrar na chave de cache.
+    """
+    client = FakeAnthropicClient()
+    adapter = AnthropicTextQA(
+        spec=spec_for("anthropic", params={"max_output_tokens": 2000, "effort": "medium"}),
+        client=client,
+    )
+    adapter.answer("p")
+
+    sent = client.calls[0]
+    assert sent["output_config"] == {"effort": "medium"}
+    assert sent["max_tokens"] == 2000
+    assert "effort" not in sent, "`effort` não pode ir como parâmetro de topo"
+
+
+def test_anthropic_sem_effort_nao_inventa_output_config():
+    """Não declarar `effort` deixa o provedor no padrão dele, sem campo extra."""
+    client = FakeAnthropicClient()
+    adapter = AnthropicTextQA(
+        spec=spec_for("anthropic", params={"max_output_tokens": 2000}), client=client
+    )
+    adapter.answer("p")
+    assert "output_config" not in client.calls[0]
 
 
 def test_anthropic_exige_max_output_tokens_no_config():
@@ -616,23 +650,41 @@ def test_provider_desconhecido_lista_os_validos(builder, role, conhecidos):
 # 6. Guarda de PLACEHOLDER
 # --------------------------------------------------------------------------- #
 def test_guarda_pega_os_placeholders_dos_configs_reais():
-    """Os YAMLs do repositório ainda estão por preencher — a guarda tem de ver."""
-    items = load_items_config(ITEMS_PATH)
+    """Os modelos avaliados ainda estão por preencher — a guarda tem de ver."""
     models = load_models_config(MODELS_PATH)
 
     with pytest.raises(ValueError) as excinfo:
         assert_no_placeholders(
             {
-                "items.generator": items.generator,
                 "models.specs.openai_audio": models.specs["openai_audio"],
                 "models.asr.spec": models.asr.spec,
             }
         )
 
     mensagem = str(excinfo.value)
-    assert "items.generator.model_id" in mensagem
     assert "models.specs.openai_audio.model_id" in mensagem
     assert "models.asr.spec.version" in mensagem
+
+
+def test_gerador_real_esta_preenchido_e_sem_amostragem():
+    """O gerador (D11) está pronto para rodar, e com os parâmetros que a API aceita.
+
+    Ancora a decisão de 2026-10-16 no teste: se alguém devolver `temperature` ao
+    `items.yaml`, a geração real passa a estourar 400 no primeiro item, e é bem
+    mais barato descobrir isso aqui.
+    """
+    generator = load_items_config(ITEMS_PATH).generator
+
+    assert_no_placeholders({"items.generator": generator})
+    assert generator.provider == "anthropic"
+    for removido in ("temperature", "top_p", "top_k"):
+        assert removido not in generator.params, (
+            f"`{removido}` foi removido dos modelos atuais da Anthropic (400). Use `effort`."
+        )
+    assert generator.params.get("max_output_tokens", 0) >= 2000, (
+        "o raciocínio do Opus 5.5 não pode ser desligado e consome o mesmo teto; "
+        "teto apertado devolve resposta sem bloco de texto"
+    )
 
 
 def test_guarda_so_olha_o_que_recebe():
@@ -657,16 +709,14 @@ def test_guarda_so_olha_o_que_recebe():
 
 def test_guarda_pega_version_mesmo_com_model_id_preenchido():
     """`version` entra no fingerprint: deixá-la como sentinela corrompe o cache."""
-    items = load_items_config(ITEMS_PATH)
-    quase_pronto = replace(items.generator, model_id="claude-opus-5-5")
+    meio_preenchido = spec_for("anthropic", model_id="claude-opus-5-5", version="PLACEHOLDER")
 
-    with pytest.raises(ValueError, match="items.generator.version"):
-        assert_no_placeholders({"items.generator": quase_pronto})
+    with pytest.raises(ValueError, match="generator.version"):
+        assert_no_placeholders({"items.generator": meio_preenchido})
 
 
 def test_guarda_passa_quando_tudo_esta_preenchido():
-    items = load_items_config(ITEMS_PATH)
-    pronto = replace(items.generator, model_id="claude-opus-5-5", version="2026-10-01")
+    pronto = spec_for("anthropic", model_id="claude-opus-5-5", version="2026-10-01")
     assert_no_placeholders({"items.generator": pronto})
 
 

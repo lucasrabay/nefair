@@ -1,27 +1,30 @@
-"""Adaptadores de ASR (Whisper) — **stubs de contrato**, ainda não implementados.
+"""Adaptadores de ASR (Whisper).
 
-Por que stubs: não há credencial de provedor nem pesos locais neste repositório,
-então um cliente "real" escrito hoje seria código **não verificável** — ninguém
-consegue rodá-lo, nenhum teste consegue cobri-lo, e ele apodreceria em silêncio
-até o dia da execução. O que tem valor agora é o *contrato*: a forma exata do
-adaptador, o SDK que ele usa, a variável de ambiente que ele exige e o campo da
-resposta de onde sai o texto. É isso que está escrito aqui.
+`WhisperAPI` está implementado: é a hospedagem escolhida para o estudo (API, sem
+download de pesos e sem RAM). `WhisperLocal` segue como stub de contrato, porque
+não há pesos locais neste repositório — um cliente "real" escrito hoje seria
+código não verificável, e o docstring dele vale mais que uma implementação que
+ninguém consegue rodar.
 
-Cada método levanta `NotImplementedError` com a lista do que falta. A factory
-`build_asr` devolve `FakeASR` quando `spec.provider == "fake"`, e é por isso que
-`scripts/06_run_eval.py --fake` roda ponta a ponta hoje, sem rede.
+Regra herdada de `models/base.py` e verificada em `tests/test_providers.py`:
+**nenhum SDK no topo deste módulo**. `torch`, `transformers` e `openai` só são
+importados dentro do método que os usa.
 
-Regra herdada de `models/base.py` e verificada no critério de aceite: **nenhum
-import de SDK no topo deste módulo**. `torch`, `transformers` e `openai` só podem
-ser importados dentro do método que os usa.
+Lembrete do D8: qual checkpoint responde aqui ainda é questão aberta
+(`configs/models.yaml` → `asr.contamination_checked: false`), e o portão em
+`run/runner.assert_contamination_checked` recusa a execução completa até que seja
+resolvida. Isto é um adaptador, não uma resposta ao D8.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from nefair.models.base import ASR, ASRResult, FakeASR, ModelSpec
+from nefair.models.providers import require_env
 
 # Variáveis de ambiente esperadas por cada provedor de ASR. Ficam nomeadas aqui
 # (e não espalhadas pelo código) para que a mensagem de erro do stub e a
@@ -58,11 +61,10 @@ class WhisperLocal:
        retorno do `pipeline("automatic-speech-recognition")`.
     6. Em falha do provedor, **levantar** a exceção: quem decide o que fazer com
        ela é o runner (retry com backoff e, esgotado, `RunRecord` com `error`).
-       Engolir o erro aqui esconderia exatamente o número que o TCC precisa
-       reportar.
 
-    `HF_TOKEN` (`ENV_HF_TOKEN`) só é necessário para checkpoints privados ou com
-    licença aceita; checkpoints públicos dispensam.
+    Não implementado por decisão: a hospedagem escolhida é API, e a máquina de
+    desenvolvimento (16 GB de RAM) não comporta os pesos. `HF_TOKEN`
+    (`ENV_HF_TOKEN`) só seria necessário para checkpoints privados.
     """
 
     spec: ModelSpec
@@ -76,50 +78,72 @@ class WhisperLocal:
             f"'{self.spec.model_id}' uma única vez em `self._pipeline`; chamar com "
             f"generate_kwargs derivados de spec.params={dict(self.spec.params)}; "
             f"devolver ASRResult(text=saida['text'], model_key='{self.spec.key}'). "
-            f"Checkpoint privado exige {ENV_HF_TOKEN}. Áudio pedido: {audio_path}."
+            f"Checkpoint privado exige {ENV_HF_TOKEN}. Áudio pedido: {audio_path}. "
+            "Para ASR por API, use provider 'openai' (WhisperAPI)."
         )
 
 
 @dataclass
 class WhisperAPI:
-    """Whisper servido por API (endpoint de transcrição da OpenAI).
+    """Whisper servido por API (endpoint de transcrição compatível com OpenAI).
 
-    Contrato que a implementação real precisa cumprir:
+    `spec.version` é o snapshot fixado no dia da execução; ele entra no
+    `fingerprint()` e, portanto, na chave de cache do runner — trocar de snapshot
+    invalida o cache sozinho, em vez de misturar transcrições de dois modelos sob
+    o mesmo nome.
 
-    1. **Import preguiçoso** de `openai` dentro de `transcribe`
-       (`from openai import OpenAI`), nunca no topo — extra opcional
-       `[providers]`.
-    2. Ler a chave de `os.environ[ENV_OPENAI_API_KEY]` e **falhar com mensagem
-       explícita** se ela não existir (não cair num cliente sem credencial, que
-       erraria com 401 dezenas de vezes depois de dezenas de retries).
-    3. Abrir `audio_path` em modo binário e chamar
-       `client.audio.transcriptions.create(model=spec.model_id, file=<arquivo>,
-       language=spec.params["language"], temperature=spec.params["temperature"],
-       response_format="json")`.
-    4. O texto sai em `response.text`. Devolver
-       `ASRResult(text=response.text, model_key=spec.key, raw=<json bruto>)`.
-    5. `spec.version` é o snapshot fixado no dia da execução; ele já entra no
-       `fingerprint()` e, portanto, na chave de cache do runner — trocar de
-       snapshot invalida o cache sozinho, em vez de misturar transcrições de dois
-       modelos sob o mesmo nome.
-    6. Erros de provedor (429, 5xx, timeout) devem **subir**: o retry com backoff
-       e o respeito ao `Retry-After` são do runner, não do adaptador, para que a
-       política seja uma só em todo o pipeline.
+    Erros de provedor (429, 5xx, timeout) **sobem**: o retry com backoff e o
+    respeito ao `Retry-After` são do runner, não do adaptador, para que a política
+    seja uma só em todo o pipeline.
     """
 
     spec: ModelSpec
+    client: Any = None
+
+    def _ensure_client(self) -> Any:
+        if self.client is None:
+            from openai import OpenAI  # import preguiçoso: extra opcional `providers`
+
+            self.client = OpenAI(
+                api_key=require_env(ENV_OPENAI_API_KEY, who=f"O ASR '{self.spec.key}'")
+            )
+        return self.client
 
     def transcribe(self, audio_path: Path) -> ASRResult:
-        raise NotImplementedError(
-            "WhisperAPI.transcribe não implementado (não há credencial para validar "
-            "o cliente). Para implementar: instalar o extra opcional `providers` "
-            f"(openai); importar `from openai import OpenAI` DENTRO deste método; "
-            f"exigir a variável de ambiente {ENV_OPENAI_API_KEY}; chamar "
-            f"client.audio.transcriptions.create(model='{self.spec.model_id}', "
-            f"file=open(audio_path,'rb'), **{dict(self.spec.params)}); devolver "
-            f"ASRResult(text=response.text, model_key='{self.spec.key}'). "
-            f"Áudio pedido: {audio_path}."
+        client = self._ensure_client()
+        with Path(audio_path).open("rb") as handle:
+            response = client.audio.transcriptions.create(
+                model=self.spec.model_id,
+                file=handle,
+                response_format="json",
+                **dict(self.spec.params),
+            )
+
+        text = getattr(response, "text", None)
+        return ASRResult(
+            text=text if text is not None else "",
+            model_key=self.spec.key,
+            raw=_raw_json(response),
         )
+
+
+def _raw_json(response: Any) -> str:
+    """Resposta serializada para a trilha de auditoria, sem derrubar a execução.
+
+    O `raw` existe para que se possa reconstituir o que o provedor devolveu; se a
+    serialização falhar, perder o `raw` é muito melhor do que perder a transcrição.
+    """
+    for attribute in ("model_dump_json", "to_json"):
+        method = getattr(response, attribute, None)
+        if callable(method):
+            try:
+                return str(method())
+            except Exception:  # noqa: BLE001 - trilha de auditoria é best-effort
+                pass
+    try:
+        return json.dumps(response, default=str, ensure_ascii=False)
+    except Exception:  # noqa: BLE001 - idem
+        return repr(response)
 
 
 # Provedores que este módulo sabe construir, em ordem estável (usada na mensagem

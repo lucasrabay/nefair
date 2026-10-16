@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from nefair.config import (  # noqa: E402
     ItemsConfig,
     ModelsConfig,
+    assert_no_placeholders,
     load_dotenv,
     load_items_config,
     load_models_config,
@@ -37,6 +38,7 @@ from nefair.items.review import (  # noqa: E402
     save_stage_summaries,
 )
 from nefair.models.base import FakeTextQA, TextQA  # noqa: E402
+from nefair.models.llm.clients import build_text_qa  # noqa: E402
 from nefair.schema import read_jsonl, write_jsonl  # noqa: E402
 
 INPUT_FILENAME = "items_generated.jsonl"
@@ -54,15 +56,22 @@ def build_filter_models(
     enquanto na avaliação da Etapa 5 os mesmos modelos rodam com temperatura 0.
     São dois usos do mesmo modelo, e o fingerprint precisa refletir isso.
     """
-    if not fake:
-        raise SystemExit(
-            "Sem `--fake` este script precisa dos adaptadores de provedor do "
-            "Bloco R (`src/nefair/models/llm/`), que ainda não existem, e de "
-            "credenciais. Rode com `--fake`."
-        )
     clients: dict[str, TextQA] = {}
     for index, key in enumerate(sorted(items_config.text_filter.models)):
         base = models_config.specs[key]
+        if not fake:
+            # Temperatura do filtro sobrescrita, provedor e ids preservados: o
+            # fingerprint distingue este uso do mesmo modelo na Etapa 5.
+            clients[key] = build_text_qa(
+                replace(
+                    base,
+                    params={
+                        **dict(base.params),
+                        "temperature": items_config.text_filter.temperature,
+                    },
+                )
+            )
+            continue
         spec = replace(
             base,
             provider="fake",
@@ -101,6 +110,10 @@ def main(argv: list[str] | None = None) -> int:
     items_config = load_items_config(args.config)
     models_config = load_models_config(args.models)
     validate_cross_config(items_config, models_config)
+    # Só no caminho real: com `--fake` o pipeline precisa seguir exercitável
+    # offline, com os YAMLs ainda por preencher.
+    if not args.fake:
+        assert_no_placeholders(items_config, models_config)
 
     out = Path(args.outputs)
     items_path = args.items or (out / INPUT_FILENAME)

@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from nefair.config import (  # noqa: E402
     ItemsConfig,
+    assert_no_placeholders,
     load_dotenv,
     load_items_config,
     load_models_config,
@@ -37,7 +38,8 @@ from nefair.items.review import (  # noqa: E402
     regenerate_report,
     save_stage_summaries,
 )
-from nefair.models.base import FakeTextQA, ModelSpec  # noqa: E402
+from nefair.models.base import FakeTextQA, ModelSpec, TextQA  # noqa: E402
+from nefair.models.llm.clients import build_text_qa  # noqa: E402
 from nefair.schema import Window, write_jsonl  # noqa: E402
 
 ITEMS_FILENAME = "items_generated.jsonl"
@@ -191,20 +193,20 @@ def fake_generator_responder(n_alternatives: int, n_items: int):
     return respond
 
 
-def build_generator(config: ItemsConfig, *, fake: bool) -> FakeTextQA:
-    """Constrói o cliente do gerador. Hoje, só o falso.
+def build_generator(config: ItemsConfig, *, fake: bool) -> TextQA:
+    """Constrói o cliente do gerador (D11).
 
-    Este bloco fala apenas com os `Protocol`s de `models/base.py`; os adaptadores
-    de provedor (OpenAI/Google/Qwen) são do Bloco R. Quando existirem, é aqui que
-    entram — nada dentro de `src/nefair/items/` precisa mudar.
+    Este script fala apenas com os `Protocol`s de `models/base.py`; quem sabe
+    conversar com cada provedor é `models/llm/clients.build_text_qa`. Nada dentro
+    de `src/nefair/items/` precisa saber qual provedor respondeu.
+
+    No caminho real o `spec` vai como está no `items.yaml` — inclusive a `version`,
+    que é reportada no texto. No caminho falso o `model_id` e a `version` recebem
+    o prefixo `fake::`, para que o `fingerprint()` de uma execução falsa jamais
+    colida com o de uma real na chave de cache.
     """
     if not fake:
-        raise SystemExit(
-            "Sem `--fake` este script precisa de um adaptador de provedor para o "
-            f"gerador `{config.generator.model_id}`, que ainda não existe neste "
-            "repositório (Bloco R) e exigiria credencial. Rode com `--fake` para "
-            "exercitar a etapa ponta a ponta com um gerador determinístico."
-        )
+        return build_text_qa(config.generator)
     spec = ModelSpec(
         key="generator",
         provider="fake",
@@ -257,8 +259,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     load_dotenv(args.env)
     config = load_items_config(args.config)
-    if args.models is not None:
-        validate_cross_config(config, load_models_config(args.models))
+    models_config = load_models_config(args.models) if args.models is not None else None
+    if models_config is not None:
+        validate_cross_config(config, models_config)
+    # Só no caminho real: com `--fake` o pipeline precisa seguir exercitável
+    # offline, com os YAMLs ainda por preencher.
+    if not args.fake:
+        assert_no_placeholders(config, models_config)
 
     if args.windows.is_file():
         windows = load_windows(args.windows)

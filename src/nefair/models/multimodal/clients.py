@@ -1,147 +1,175 @@
-"""Adaptadores multimodais (áudio → resposta) — **stubs de contrato**.
+"""Adaptadores multimodais (áudio → resposta).
 
 São a via **nativa** da comparação da Etapa 5: o modelo recebe o áudio da janela
 junto com o enunciado, sem nenhuma transcrição no meio. O `Protocol` é `AudioQA`
 (`answer(prompt, audio_path) -> QAResult`).
 
-Motivo dos stubs e regra do import preguiçoso: idênticos aos de
-`models/llm/clients.py`. O que congelamos aqui é o contrato — como o áudio entra
-na requisição de cada provedor, que é justamente a parte que difere entre eles e
-a mais fácil de errar na pressa do dia da execução.
+Os três provedores esperam o áudio **embutido na mensagem**; nenhum aceita um
+caminho de arquivo local. A Etapa 2 grava WAV 16 kHz mono, que os três aceitam.
 
-Detalhe que vale por si: todos os três provedores esperam o áudio **embutido na
-mensagem** (base64 ou upload prévio), nenhum aceita um caminho de arquivo local.
-A Etapa 2 grava WAV 16 kHz mono, que é o formato que os três aceitam.
+Como o áudio entra na requisição é o que mais difere entre eles, e é a parte mais
+fácil de errar:
+
+| Provedor  | Forma |
+|-----------|-------|
+| OpenAI    | content part `input_audio` com o base64 **puro** |
+| DashScope | o mesmo campo, mas com o prefixo `data:audio/wav;base64,` |
+| Google    | `types.Part.from_bytes(data=<bytes>, mime_type="audio/wav")` |
+
+Regras herdadas de `models/llm/clients.py`: nenhum SDK no topo do módulo, cliente
+injetável para teste, resposta sem limpeza, erros subindo para o runner.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 from nefair.models.base import AudioQA, FakeAudioQA, ModelSpec, QAResult
+from nefair.models.providers import (
+    audio_b64,
+    chat_params,
+    qa_from_google_response,
+    qa_from_openai_response,
+    require_env,
+)
 
 ENV_OPENAI_API_KEY = "OPENAI_API_KEY"
 ENV_GOOGLE_API_KEY = "GOOGLE_API_KEY"
 ENV_QWEN_API_KEY = "DASHSCOPE_API_KEY"
 ENV_QWEN_BASE_URL = "QWEN_BASE_URL"
 
+# Formato gravado pela Etapa 2 (`corpus/audio.py`): WAV PCM 16 kHz mono.
+AUDIO_FORMAT = "wav"
+AUDIO_MIME = "audio/wav"
+
+
+def _audio_message(prompt: str, data: str) -> list[dict[str, Any]]:
+    """Mensagem multimodal no formato compartilhado por OpenAI e DashScope.
+
+    `data` já vem pronto porque é justamente aí que os dois divergem: a OpenAI
+    espera o base64 puro, o DashScope espera o prefixo `data:`.
+    """
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "input_audio", "input_audio": {"data": data, "format": AUDIO_FORMAT}},
+            ],
+        }
+    ]
+
 
 @dataclass
 class OpenAIAudioQA:
-    """Modelo de áudio da OpenAI (GPT-4o Audio ou sucessor).
+    """Modelo de áudio da OpenAI (via nativa da família `openai`).
 
-    Contrato que a implementação real precisa cumprir:
-
-    1. **Import preguiçoso** de `openai` dentro de `answer`; extra `[providers]`.
-       `base64` também é importado aqui, junto.
-    2. Exigir `os.environ[ENV_OPENAI_API_KEY]`.
-    3. Ler os bytes de `audio_path`, codificar em base64 e montar o conteúdo
-       multimodal: `messages=[{"role": "user", "content": [
-       {"type": "text", "text": prompt},
-       {"type": "input_audio", "input_audio": {"data": <b64>, "format": "wav"}}]}]`.
-    4. Chamar `client.chat.completions.create(model=spec.model_id,
-       messages=..., modalities=["text"], **spec.params)`. `modalities=["text"]`
-       importa: sem isso o modelo pode responder em áudio, e a resposta textual
-       vem vazia — que o parser contaria como não interpretável, inflando a taxa
-       por um erro de configuração nosso, não do modelo.
-    5. Campos da resposta: iguais aos de `OpenAITextQA`
-       (`choices[0].message.content`, `choices[0].finish_reason`, `usage`).
-    6. Erros de provedor **sobem**; retry e backoff são do runner.
+    `modalities=["text"]` não é detalhe: sem isso o modelo pode responder **em
+    áudio**, e a resposta textual vem vazia — que o parser contaria como não
+    interpretável, inflando a taxa por um erro de configuração nosso, e não por
+    falha do modelo. É exatamente o tipo de defeito que produziria um resultado
+    plausível e errado.
     """
 
     spec: ModelSpec
+    client: Any = None
+
+    def _ensure_client(self) -> Any:
+        if self.client is None:
+            from openai import OpenAI  # import preguiçoso: extra opcional `providers`
+
+            self.client = OpenAI(
+                api_key=require_env(ENV_OPENAI_API_KEY, who=f"O modelo '{self.spec.key}'")
+            )
+        return self.client
 
     def answer(self, prompt: str, audio_path: Path) -> QAResult:
-        raise NotImplementedError(
-            "OpenAIAudioQA.answer não implementado (sem credencial para validar). "
-            "Para implementar: extra opcional `providers` (openai); "
-            "`from openai import OpenAI` e `import base64` DENTRO deste método; exigir "
-            f"{ENV_OPENAI_API_KEY}; enviar o WAV como content part "
-            "{'type':'input_audio','input_audio':{'data':<b64>,'format':'wav'}} com "
-            f"modalities=['text'] e model='{self.spec.model_id}', "
-            f"params={dict(self.spec.params)}; devolver "
-            "QAResult(raw_text=response.choices[0].message.content, "
-            f"model_key='{self.spec.key}'). Áudio pedido: {audio_path}."
+        response = self._ensure_client().chat.completions.create(
+            model=self.spec.model_id,
+            messages=_audio_message(prompt, audio_b64(audio_path)),
+            modalities=["text"],
+            **chat_params(self.spec.params),
         )
+        return qa_from_openai_response(response, self.spec.key)
 
 
 @dataclass
 class GoogleAudioQA:
-    """Gemini com entrada de áudio.
+    """Gemini com entrada de áudio (via nativa da família `google`).
 
-    Contrato que a implementação real precisa cumprir:
-
-    1. **Import preguiçoso** de `google.genai` dentro de `answer`
-       (`from google import genai` e `from google.genai import types`).
-    2. Exigir `os.environ[ENV_GOOGLE_API_KEY]`.
-    3. Duas formas de mandar o áudio, e a escolha depende do tamanho: janelas de
-       30–60 s cabem folgadamente no limite de requisição inline, então usar
-       `types.Part.from_bytes(data=audio_path.read_bytes(),
-       mime_type="audio/wav")` e passar `contents=[prompt, part]`. O
-       `client.files.upload(...)` só é necessário para áudios grandes, e traria
-       um estado remoto a limpar depois.
-    4. Configuração: `config=types.GenerateContentConfig(
-       temperature=spec.params["temperature"],
-       max_output_tokens=spec.params["max_output_tokens"])`.
-    5. Campos da resposta: `response.text`;
-       `response.candidates[0].finish_reason`; `response.usage_metadata`.
-       `response.text is None` (bloqueio de segurança) vira `raw_text=""`.
-    6. Erros de provedor **sobem**.
+    Janelas de 30–60 s cabem folgadamente no limite de requisição inline, então o
+    áudio vai embutido. O `client.files.upload(...)` só seria necessário para
+    áudios grandes, e traria um estado remoto a limpar depois.
     """
 
     spec: ModelSpec
+    client: Any = None
+    types: Any = None
+
+    def _ensure_client(self) -> tuple[Any, Any]:
+        if self.client is None or self.types is None:
+            from google import genai  # import preguiçoso: extra opcional `providers`
+            from google.genai import types as genai_types
+
+            if self.client is None:
+                self.client = genai.Client(
+                    api_key=require_env(ENV_GOOGLE_API_KEY, who=f"O modelo '{self.spec.key}'")
+                )
+            if self.types is None:
+                self.types = genai_types
+        return self.client, self.types
 
     def answer(self, prompt: str, audio_path: Path) -> QAResult:
-        raise NotImplementedError(
-            "GoogleAudioQA.answer não implementado (sem credencial para validar). "
-            "Para implementar: extra opcional `providers` (google-genai); "
-            "`from google import genai` e `from google.genai import types` DENTRO "
-            f"deste método; exigir {ENV_GOOGLE_API_KEY}; chamar "
-            f"client.models.generate_content(model='{self.spec.model_id}', "
-            "contents=[prompt, types.Part.from_bytes(data=<wav>, mime_type='audio/wav')], "
-            f"config=...{dict(self.spec.params)}); devolver QAResult("
-            f"raw_text=response.text, model_key='{self.spec.key}'). "
-            f"Áudio pedido: {audio_path}."
+        client, types = self._ensure_client()
+        part = types.Part.from_bytes(data=Path(audio_path).read_bytes(), mime_type=AUDIO_MIME)
+        response = client.models.generate_content(
+            model=self.spec.model_id,
+            contents=[prompt, part],
+            config=types.GenerateContentConfig(
+                temperature=self.spec.params.get("temperature"),
+                max_output_tokens=self.spec.params.get("max_output_tokens"),
+            ),
         )
+        return qa_from_google_response(response, self.spec.key)
 
 
 @dataclass
 class QwenAudioQA:
-    """Qwen2.5-Omni / Qwen2-Audio — configuração open-weight da via nativa.
+    """Qwen3-Omni (via nativa da família open-weight).
 
-    Contrato que a implementação real precisa cumprir:
-
-    - **Via DashScope compatível com OpenAI**: `from openai import OpenAI` com
-      `base_url=os.environ[ENV_QWEN_BASE_URL]` e
-      `api_key=os.environ[ENV_QWEN_API_KEY]`; o áudio vai como content part
-      `{"type": "input_audio", "input_audio": {"data": "data:audio/wav;base64,<b64>",
-      "format": "wav"}}` — repare que o DashScope espera o prefixo `data:` no
-      campo, diferente da OpenAI, que espera só o base64 puro.
-    - **Pesos locais**: extra `[local]`;
-      `transformers.Qwen2AudioForConditionalGeneration` + `AutoProcessor`, com o
-      áudio lido em 16 kHz (`librosa`/`soundfile`) e passado ao processador.
-      Carregar o modelo **uma única vez** em `self._model`.
-
-    Import preguiçoso dentro de `answer` nos dois casos; `raw_text` sem limpeza;
-    erros subindo para o runner.
+    Fala com um endpoint compatível com OpenAI definido por `QWEN_BASE_URL`, mas
+    com **uma** diferença em relação à OpenAI: o campo `data` do `input_audio`
+    leva o prefixo `data:audio/wav;base64,`. Mandar o base64 puro para o DashScope
+    (ou o prefixado para a OpenAI) é o erro mais fácil de cometer aqui, e
+    `tests/test_providers.py` trava os dois sentidos.
 
     Pareamento (§Etapa 5): este backbone precisa ser o mesmo de `QwenTextQA`.
     """
 
     spec: ModelSpec
+    client: Any = None
+
+    def _ensure_client(self) -> Any:
+        if self.client is None:
+            from openai import OpenAI  # import preguiçoso: extra opcional `providers`
+
+            who = f"O modelo '{self.spec.key}'"
+            self.client = OpenAI(
+                api_key=require_env(ENV_QWEN_API_KEY, who=who),
+                base_url=require_env(ENV_QWEN_BASE_URL, who=who),
+            )
+        return self.client
 
     def answer(self, prompt: str, audio_path: Path) -> QAResult:
-        raise NotImplementedError(
-            "QwenAudioQA.answer não implementado (sem credencial nem pesos para "
-            "validar). Para implementar: via DashScope, `from openai import OpenAI` "
-            f"DENTRO deste método com base_url={ENV_QWEN_BASE_URL} e "
-            f"api_key={ENV_QWEN_API_KEY}, mandando o áudio como input_audio com "
-            "prefixo 'data:audio/wav;base64,'; via local, "
-            "`transformers.Qwen2AudioForConditionalGeneration` + `AutoProcessor` com o "
-            f"extra opcional `local`. Modelo: '{self.spec.model_id}', "
-            f"params={dict(self.spec.params)}. Áudio pedido: {audio_path}."
+        data = f"data:{AUDIO_MIME};base64,{audio_b64(audio_path)}"
+        response = self._ensure_client().chat.completions.create(
+            model=self.spec.model_id,
+            messages=_audio_message(prompt, data),
+            **chat_params(self.spec.params),
         )
+        return qa_from_openai_response(response, self.spec.key)
 
 
 # Provedores que este módulo sabe construir, em ordem estável.
@@ -159,7 +187,7 @@ def build_audio_qa(
 
     `force_fake` troca o `provider` do spec para `"fake"` antes de construir, de
     modo que o `fingerprint()` — e portanto a chave de cache — de uma execução
-    falsa nunca colida com o de uma execução real.
+    falsa nunca colida com o de uma real.
     """
     if force_fake or spec.provider == "fake":
         return FakeAudioQA(

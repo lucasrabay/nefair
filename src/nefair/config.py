@@ -614,3 +614,50 @@ def validate_cross_config(items: ItemsConfig, models: ModelsConfig) -> None:
         )
     if models.asr.spec.role != "asr":
         raise ValueError(f"models.asr.spec deve ter role 'asr', não '{models.asr.spec.role}'.")
+
+
+# Sentinela que os YAMLs usam enquanto `model_id`/`version` não foram fixados.
+PLACEHOLDER = "PLACEHOLDER"
+
+
+def assert_no_placeholders(items: ItemsConfig | None, models: ModelsConfig | None) -> None:
+    """Recusa a execução enquanto algum `model_id`/`version` for sentinela.
+
+    Separada de `validate_cross_config` de propósito. Os scripts 03 e 04 chamam a
+    validação cruzada **antes** de olhar a flag `--fake`, e juntar as duas aqui
+    tornaria impossível exercitar o pipeline offline com os YAMLs por preencher —
+    que é justamente a propriedade que permite validar tudo sem credencial. Esta
+    guarda roda só no caminho real.
+
+    Sem ela, preencher metade dos campos manda `model_id="PLACEHOLDER-gemini"` ao
+    provedor: ou 404, ou — pior — uma execução que parece funcionar porque o
+    provedor resolveu o nome para outra coisa.
+
+    `version` importa tanto quanto `model_id`: ela entra no `fingerprint()` e,
+    portanto, na chave de cache. Rodar com `version="PLACEHOLDER"` gravaria
+    respostas de snapshots diferentes sob a mesma chave.
+    """
+    pending: list[str] = []
+
+    def check(label: str, spec: ModelSpec) -> None:
+        for field in ("model_id", "version"):
+            value = str(getattr(spec, field, "") or "")
+            if PLACEHOLDER in value:
+                pending.append(f"{label}.{field} = {value!r}")
+
+    if models is not None:
+        check("models.asr.spec", models.asr.spec)
+        for key in sorted(models.specs):
+            check(f"models.specs.{key}", models.specs[key])
+    if items is not None:
+        check("items.generator", items.generator)
+
+    if pending:
+        listed = "\n".join(f"  - {entry}" for entry in pending)
+        raise ValueError(
+            f"{len(pending)} campo(s) ainda com a sentinela {PLACEHOLDER}, e uma execução "
+            f"real os mandaria ao provedor:\n{listed}\n"
+            "Preencha `model_id` e `version` com o snapshot exato do dia da execução "
+            "(a `version` é reportada no texto e entra na chave de cache). "
+            "Para exercitar o pipeline sem credencial, rode com `--fake`."
+        )

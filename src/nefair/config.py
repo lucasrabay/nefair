@@ -7,6 +7,7 @@ linhas `CHAVE=VALOR` para não introduzir `python-dotenv` (deps mínimas).
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -620,17 +621,22 @@ def validate_cross_config(items: ItemsConfig, models: ModelsConfig) -> None:
 PLACEHOLDER = "PLACEHOLDER"
 
 
-def assert_no_placeholders(items: ItemsConfig | None, models: ModelsConfig | None) -> None:
+def assert_no_placeholders(specs: Mapping[str, ModelSpec]) -> None:
     """Recusa a execução enquanto algum `model_id`/`version` for sentinela.
 
-    Separada de `validate_cross_config` de propósito. Os scripts 03 e 04 chamam a
+    Recebe **só os modelos que quem chamou vai de fato usar**, rotulados. Isso não
+    é detalhe de API: varrer o `models.yaml` inteiro prenderia cada etapa aos
+    campos das outras. A geração de itens (Etapa 3.1) só fala com o gerador, e
+    exigir dela o `model_id` do Qwen a deixaria parada esperando uma credencial
+    que ela nunca vai usar.
+
+    Separada de `validate_cross_config` de propósito: os scripts chamam a
     validação cruzada **antes** de olhar a flag `--fake`, e juntar as duas aqui
     tornaria impossível exercitar o pipeline offline com os YAMLs por preencher —
-    que é justamente a propriedade que permite validar tudo sem credencial. Esta
-    guarda roda só no caminho real.
+    que é a propriedade que permite validar tudo sem credencial.
 
-    Sem ela, preencher metade dos campos manda `model_id="PLACEHOLDER-gemini"` ao
-    provedor: ou 404, ou — pior — uma execução que parece funcionar porque o
+    Sem esta guarda, preencher metade dos campos manda `model_id="PLACEHOLDER-gemini"`
+    ao provedor: ou 404, ou — pior — uma execução que parece funcionar porque o
     provedor resolveu o nome para outra coisa.
 
     `version` importa tanto quanto `model_id`: ela entra no `fingerprint()` e,
@@ -638,19 +644,12 @@ def assert_no_placeholders(items: ItemsConfig | None, models: ModelsConfig | Non
     respostas de snapshots diferentes sob a mesma chave.
     """
     pending: list[str] = []
-
-    def check(label: str, spec: ModelSpec) -> None:
+    for label in sorted(specs):
+        spec = specs[label]
         for field in ("model_id", "version"):
             value = str(getattr(spec, field, "") or "")
             if PLACEHOLDER in value:
                 pending.append(f"{label}.{field} = {value!r}")
-
-    if models is not None:
-        check("models.asr.spec", models.asr.spec)
-        for key in sorted(models.specs):
-            check(f"models.specs.{key}", models.specs[key])
-    if items is not None:
-        check("items.generator", items.generator)
 
     if pending:
         listed = "\n".join(f"  - {entry}" for entry in pending)

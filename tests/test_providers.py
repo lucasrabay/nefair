@@ -621,12 +621,38 @@ def test_guarda_pega_os_placeholders_dos_configs_reais():
     models = load_models_config(MODELS_PATH)
 
     with pytest.raises(ValueError) as excinfo:
-        assert_no_placeholders(items, models)
+        assert_no_placeholders(
+            {
+                "items.generator": items.generator,
+                "models.specs.openai_audio": models.specs["openai_audio"],
+                "models.asr.spec": models.asr.spec,
+            }
+        )
 
     mensagem = str(excinfo.value)
     assert "items.generator.model_id" in mensagem
     assert "models.specs.openai_audio.model_id" in mensagem
     assert "models.asr.spec.version" in mensagem
+
+
+def test_guarda_so_olha_o_que_recebe():
+    """Checar só o que a etapa usa não é detalhe de API.
+
+    A geração de itens (Etapa 3.1) não fala com nenhum modelo avaliado. Se a
+    guarda varresse o `models.yaml` inteiro, a geração ficaria parada esperando o
+    `model_id` do Qwen — uma credencial que ela nunca vai usar. Foi exatamente o
+    que aconteceu quando a chave da Alibaba travou numa verificação de identidade.
+    """
+    items = load_items_config(ITEMS_PATH)
+    models = load_models_config(MODELS_PATH)
+    pronto = replace(items.generator, model_id="claude-opus-5-5", version="2026-10-01")
+
+    # O gerador está pronto; o resto do models.yaml, não. A guarda não pode se
+    # importar com o que não recebeu.
+    assert_no_placeholders({"items.generator": pronto})
+
+    with pytest.raises(ValueError, match="qwen_text"):
+        assert_no_placeholders({"models.specs.qwen_text": models.specs["qwen_text"]})
 
 
 def test_guarda_pega_version_mesmo_com_model_id_preenchido():
@@ -635,18 +661,18 @@ def test_guarda_pega_version_mesmo_com_model_id_preenchido():
     quase_pronto = replace(items.generator, model_id="claude-opus-5-5")
 
     with pytest.raises(ValueError, match="items.generator.version"):
-        assert_no_placeholders(replace(items, generator=quase_pronto), None)
+        assert_no_placeholders({"items.generator": quase_pronto})
 
 
 def test_guarda_passa_quando_tudo_esta_preenchido():
     items = load_items_config(ITEMS_PATH)
     pronto = replace(items.generator, model_id="claude-opus-5-5", version="2026-10-01")
-    assert_no_placeholders(replace(items, generator=pronto), None)
+    assert_no_placeholders({"items.generator": pronto})
 
 
-def test_guarda_aceita_none():
-    """O script 03 pode rodar sem `--models`; a guarda não pode exigir os dois."""
-    assert_no_placeholders(None, None)
+def test_guarda_aceita_conjunto_vazio():
+    """Uma etapa que não chama nenhum provedor não tem o que checar."""
+    assert_no_placeholders({})
 
 
 # --------------------------------------------------------------------------- #

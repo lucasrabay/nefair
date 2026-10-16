@@ -110,10 +110,15 @@ def main(argv: list[str] | None = None) -> int:
     items_config = load_items_config(args.config)
     models_config = load_models_config(args.models)
     validate_cross_config(items_config, models_config)
-    # Só no caminho real: com `--fake` o pipeline precisa seguir exercitável
-    # offline, com os YAMLs ainda por preencher.
+    # Só no caminho real, e só sobre os modelos do filtro (D3): o gerador já
+    # rodou na etapa anterior e o ASR só entra na Etapa 4.
     if not args.fake:
-        assert_no_placeholders(items_config, models_config)
+        assert_no_placeholders(
+            {
+                f"models.specs.{key}": models_config.specs[key]
+                for key in items_config.text_filter.models
+            }
+        )
 
     out = Path(args.outputs)
     items_path = args.items or (out / INPUT_FILENAME)

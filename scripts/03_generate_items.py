@@ -262,10 +262,11 @@ def main(argv: list[str] | None = None) -> int:
     models_config = load_models_config(args.models) if args.models is not None else None
     if models_config is not None:
         validate_cross_config(config, models_config)
-    # Só no caminho real: com `--fake` o pipeline precisa seguir exercitável
-    # offline, com os YAMLs ainda por preencher.
+    # Só no caminho real, e só sobre o gerador: esta etapa não fala com nenhum
+    # modelo avaliado, então exigir os `model_id` deles a deixaria parada
+    # esperando credenciais que ela nunca vai usar.
     if not args.fake:
-        assert_no_placeholders(config, models_config)
+        assert_no_placeholders({"items.generator": config.generator})
 
     if args.windows.is_file():
         windows = load_windows(args.windows)

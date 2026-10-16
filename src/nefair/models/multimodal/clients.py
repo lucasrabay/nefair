@@ -37,7 +37,7 @@ from nefair.models.providers import (
 
 ENV_OPENAI_API_KEY = "OPENAI_API_KEY"
 ENV_GOOGLE_API_KEY = "GOOGLE_API_KEY"
-ENV_QWEN_API_KEY = "DASHSCOPE_API_KEY"
+ENV_QWEN_API_KEY = "QWEN_API_KEY"
 ENV_QWEN_BASE_URL = "QWEN_BASE_URL"
 
 # Formato gravado pela Etapa 2 (`corpus/audio.py`): WAV PCM 16 kHz mono.

@@ -32,8 +32,11 @@ from nefair.models.providers import (
 
 ENV_OPENAI_API_KEY = "OPENAI_API_KEY"
 ENV_GOOGLE_API_KEY = "GOOGLE_API_KEY"
-# Qwen via serviço compatível com OpenAI (DashScope) ou endpoint próprio.
-ENV_QWEN_API_KEY = "DASHSCOPE_API_KEY"
+# Qwen por QUALQUER host compatível com OpenAI, definido em `QWEN_BASE_URL`.
+# O nome é do modelo, não do host, de propósito: o checkpoint de peso aberto
+# `Qwen3-Omni-30B-A3B` NÃO é servido pela Alibaba Model Studio (verificado em
+# 2026-10-16), então o host é uma escolha aberta — ver `.env.example`.
+ENV_QWEN_API_KEY = "QWEN_API_KEY"
 ENV_QWEN_BASE_URL = "QWEN_BASE_URL"
 # Gerador dos itens (D11), fora do conjunto avaliado.
 ENV_ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"

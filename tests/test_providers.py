@@ -541,7 +541,7 @@ def test_erro_do_provedor_sobe():
     [
         (OpenAITextQA, "openai", "OPENAI_API_KEY"),
         (GoogleTextQA, "google", "GOOGLE_API_KEY"),
-        (QwenTextQA, "qwen", "DASHSCOPE_API_KEY"),
+        (QwenTextQA, "qwen", "QWEN_API_KEY"),
         (AnthropicTextQA, "anthropic", "ANTHROPIC_API_KEY"),
     ],
 )
@@ -551,7 +551,7 @@ def test_sem_credencial_erro_nomeia_a_variavel(monkeypatch, adapter_cls, provide
     Sem isso o cliente erraria 401 a cada retry de cada item antes de alguém
     perceber que bastava exportar uma chave.
     """
-    for name in ("OPENAI_API_KEY", "GOOGLE_API_KEY", "DASHSCOPE_API_KEY", "ANTHROPIC_API_KEY"):
+    for name in ("OPENAI_API_KEY", "GOOGLE_API_KEY", "QWEN_API_KEY", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(name, raising=False)
 
     adapter = adapter_cls(spec=spec_for(provider))
